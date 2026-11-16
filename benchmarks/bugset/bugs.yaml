@@ -232,3 +232,55 @@ bugs:
     report: >
       camelCase("hello big world") returns "helloIigOorld" instead of "helloBigWorld".
     root_cause: camelCase upper-cases lower[1] instead of the first character lower[0] of each subsequent word.
+
+  # --- alertsink: vendored from the team's own MLOps-Incident-Diagnosis project -------------
+  - id: ml01-alerts-limit-wrong-end
+    repo: alertsink
+    difficulty: medium
+    with_trace: true
+    failing_test: "tests/unit/test_alert_sink.py::test_http_round_trip"
+    inject:
+      - file: services/alert-sink/alert_sink.py
+        find: "    return lines[-limit:] if limit else lines"
+        replace: "    return lines[:limit] if limit else lines"
+    report: >
+      GET /alerts?limit=1 on the alert sink returns the OLDEST alert instead of the most recent
+      one. The diagnosis box polls that endpoint to see what just fired, so it keeps reporting a
+      stale incident. /deploys?limit=1 has the same problem.
+    root_cause: >
+      tail_lines slices from the start of the file (lines[:limit]) instead of the end
+      (lines[-limit:]), so "limit" returns the first N lines rather than the last N.
+
+  - id: ml02-alert-status-from-payload
+    repo: alertsink
+    difficulty: medium
+    with_trace: true
+    failing_test: "tests/unit/test_alert_sink.py::test_one_record_per_alert"
+    inject:
+      - file: services/alert-sink/alert_sink.py
+        find: '            "status": alert.get("status"),'
+        replace: '            "status": payload.get("status"),'
+    report: >
+      Every alert we store comes out as "firing", even the ones Alertmanager sent as resolved.
+      A webhook containing one firing and one resolved alert writes two rows that both say
+      firing, so incidents never look closed.
+    root_cause: >
+      The per-alert record takes status from the top-level webhook payload instead of from the
+      individual alert, so all alerts in one payload inherit the group status.
+
+  - id: ml03-stored-count-counts-payload
+    repo: alertsink
+    difficulty: easy
+    with_trace: true
+    failing_test: "tests/unit/test_alert_sink.py::test_http_round_trip"
+    inject:
+      - file: services/alert-sink/alert_sink.py
+        find: '        return self._send(200, json.dumps({"stored": len(records)}))'
+        replace: '        return self._send(200, json.dumps({"stored": len(payload)}))'
+    report: >
+      The alert sink's POST /alertmanager response reports the wrong number of stored alerts.
+      A webhook with 2 alerts answers {"stored": 4}. The number written to alerts.jsonl is
+      correct, only the response count is wrong.
+    root_cause: >
+      The response counts the keys of the webhook payload dict instead of the flattened alert
+      records that were actually appended.
