@@ -106,9 +106,14 @@ def pick_demo_runs(limit: int = 12, src_db: Path | None = None) -> list[str]:
     src = Path(src_db or config.DB_PATH)
     with sqlite3.connect(src) as c:
         c.row_factory = sqlite3.Row
+        # outcome 'error' means the harness died (a killed process, a crashed sandbox), not
+        # something the agents did. Seeding one shows a viewer a run with 0 attempts, 35 ms and
+        # $0.00 against a repo path that does not exist in the container - it reads as a defect
+        # in the system. 'escalated' is kept: that IS an agent outcome and worth showing.
         rows = c.execute(
             "SELECT task_id, arch, outcome, attempts, bug_id FROM runs "
-            "WHERE llm_mode != 'mock' AND outcome IS NOT NULL ORDER BY created_at DESC"
+            "WHERE llm_mode != 'mock' AND outcome IS NOT NULL AND outcome <> 'error' "
+            "ORDER BY created_at DESC"
         ).fetchall()
 
     picked: list[str] = []

@@ -438,8 +438,10 @@ def seed(task_ids: str = typer.Option("", help="Comma list of task ids; default:
     ids = [t.strip() for t in task_ids.split(",") if t.strip()]
     if not ids and bench_id:
         with sqlite3.connect(config.DB_PATH) as c:
+            # same exclusion as pick_demo_runs: a harness error is not an agent outcome
             ids = [r[0] for r in c.execute(
-                "SELECT task_id FROM runs WHERE bench_id=? ORDER BY created_at", (bench_id,))]
+                "SELECT task_id FROM runs WHERE bench_id=? AND outcome IS NOT NULL"
+                " AND outcome <> 'error' ORDER BY created_at", (bench_id,))]
         if not ids:
             con.print(f"[red]No runs found for bench_id {bench_id!r}[/]")
             raise typer.Exit(1)

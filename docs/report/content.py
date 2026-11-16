@@ -580,13 +580,27 @@ def _results(doc, helpers, rows, stats, facts, archs, total_runs, total_cost):
 
     doc.add_heading("7.1  Experimental design", level=2)
     para(doc,
-         "The bug set contains 16 reproducible defects injected into two sample repositories: "
-         "a Python e-commerce library (pyshop, 46 tests) and a JavaScript text utility library "
-         "(textkit, node:test). Each bug is a realistic logic error — an off-by-one in a "
-         "subtotal, a case-sensitivity bug in region lookup, a mutable default argument, an "
-         "inclusive/exclusive date boundary. A separate check proves every bug fails when "
-         "injected and passes when fixed, so a resolved run cannot be an artefact of a broken "
-         "test.", align=J)
+         "The bug set contains 19 reproducible defects injected into three repositories: a "
+         "Python e-commerce library (pyshop, 46 tests), a JavaScript text utility library "
+         "(textkit, node:test), and alertsink — the incident-trigger service from the team's "
+         "own MLOps-Incident-Diagnosis project, carried over with its module and test file "
+         "unmodified. Each bug is a realistic logic error: an off-by-one in a subtotal, a "
+         "case-sensitivity bug in region lookup, a mutable default argument, a list sliced from "
+         "the wrong end. A separate check proves every one of the 19 fails when injected and "
+         "passes when fixed, so a resolved run cannot be an artefact of a broken test.", align=J)
+    para(doc,
+         "Including alertsink is deliberate. A bug set written entirely for the benchmark "
+         "invites the objection that the agents are being graded on code shaped to suit them; "
+         "alertsink is pre-existing production code that was never written with this system in "
+         "mind. It is included because it depends only on the standard library, whereas the "
+         "rest of that project requires MLflow, scikit-learn and a live Flask app.", align=J)
+    para(doc,
+         "The defect is never stored in the repository. Each run copies the pristine repository, "
+         "applies the injection, and commits the broken state as the single commit of a fresh "
+         "git history. The agents therefore receive a repository with one defect, no clue in the "
+         "git log, and a bug report that describes only symptoms — no file or function is "
+         "named. Reversing the injection yields the known-good fix used for reference scoring.",
+         align=J)
     diffs = Counter(r["difficulty"] for r in rows if r.get("difficulty"))
     table(doc, ["Dimension", "Levels", "Count"], [
         ["Bugs", "16 injected defects across 2 repositories and 2 languages", "16"],
@@ -604,13 +618,27 @@ def _results(doc, helpers, rows, stats, facts, archs, total_runs, total_cost):
          "difference between architectures from ordinary noise; the standard deviations in "
          "Table 7.2 are computed across these repetitions.", align=J)
     para(doc,
-         "Two persona dimensions are implemented and available as further levels. Agent "
-         "personas (default, senior, novice, security) alter the system prompts of the "
-         "Diagnoser, Fixer and Reviewer. Reporter personas model who filed the report: a "
-         "developer attaches the failing test output, whereas an end user describes only the "
-         "symptom with no logs — which removes the stack trace the Diagnoser would otherwise "
-         "anchor on. The results below hold these at their defaults so that architecture is the "
-         "only variable.", align=J)
+         "Four further experiments vary one factor at a time while holding the rest at the "
+         "baseline configuration (hierarchical, react, default persona, developer reporter). "
+         "Because the architecture experiment already contains that baseline arm for every bug "
+         "with three repetitions, the sweeps run only the non-baseline levels and are compared "
+         "back to it pairwise on the same bugs — 36 additional runs rather than 112, and a "
+         "paired comparison rather than one across different bug sets.", align=J)
+    table(doc, ["Experiment", "Factor varied", "Levels", "Runs"], [
+        ["1  Architecture", "Orchestration topology",
+         "hierarchical, sequential, p2p × 16 bugs × 3 repetitions", "140"],
+        ["2  Prompt variant", "How the Diagnoser is prompted",
+         "fewshot, react-reflect × 8 bugs (baseline: react)", "16"],
+        ["3  Agent persona", "System-prompt persona of Diagnoser, Fixer, Reviewer",
+         "senior, novice, security × 4 bugs (baseline: default)", "12"],
+        ["4  Reporter persona", "Who filed the report, and what they attached",
+         "enduser — symptom only, no stack trace × 8 bugs", "8"],
+        ["5  Own-codebase check", "Repository provenance",
+         "3 alertsink bugs from the team's own MLOps project", "3"],
+        ["", "", "**Total live evaluated runs (incl. demonstrations)**", "**188**"],
+    ], widths=[1.35, 1.75, 2.4, 0.7], size=8.5,
+        caption="Table 7.1b  The five experiments. Each varies one factor; the rest stay at "
+                "baseline.")
 
     doc.add_heading("7.2  Is the system working as expected?", level=2)
     hdr = ["Metric"] + archs
@@ -745,7 +773,115 @@ def _results(doc, helpers, rows, stats, facts, archs, total_runs, total_cost):
          "measure. The practical conclusion is that task–model fit pays off only where the "
          "expensive agents are, and the Manager and Judge are not where the money goes.", align=J)
 
-    doc.add_heading("7.7  Deployment and demonstration", level=2)
+    doc.add_heading("7.7  Prompt variants: does more machinery help?", level=2)
+    from codefix.eval.compare import _load
+    from codefix.eval.compare import compare as cmp_factor
+
+    crows = _load()
+    cv = cmp_factor("variant", crows)
+    if cv["levels"]:
+        lv = list(cv["levels"])
+        table(doc, ["Metric"] + lv, [
+            ["Runs"] + [str(cv["levels"][k]["n"]) for k in lv],
+            ["**Resolved**"] + [f"{cv['levels'][k]['resolved']}/{cv['levels'][k]['n']} "
+                                f"({cv['levels'][k]['resolved_pct']:.0f}%)" for k in lv],
+            ["Right file(s) changed"] + [f"{cv['levels'][k]['right_file_pct']:.0f}%" for k in lv],
+            ["Edit similarity to reference"] + [f"{cv['levels'][k]['ref_sim']:.2f}" for k in lv],
+            ["Mean wall-clock"] + [f"{cv['levels'][k]['secs']:.1f}s" for k in lv],
+            ["Diagnoser time"] + [f"{cv['levels'][k]['diag_s']:.1f}s" for k in lv],
+            ["Mean LLM calls"] + [f"{cv['levels'][k]['calls']:.1f}" for k in lv],
+            ["**Mean cost / run**"] + [f"${cv['levels'][k]['cost']:.4f}" for k in lv],
+        ], widths=[2.1] + [1.4] * len(lv), size=9,
+            caption=f"Table 7.4  Prompt variants, paired on {len(cv['bugs'])} bugs.")
+    para(doc,
+         "Plain ReAct is the best of the three, and the two alternatives fail in opposite "
+         "directions. The few-shot variant is the cheapest and fastest because it makes 1.8 "
+         "model calls instead of 4.5 and runs no tool loop at all — but without tools it must "
+         "infer the location from retrieved context, and it changes the right file only 82% of "
+         "the time. ReAct+Reflection adds a Reviewer that critiques the patch before it is "
+         "tested: it costs about two-thirds more and takes half again as long, and still "
+         "resolves no better than plain ReAct.", align=J)
+    para(doc,
+         "The explanation is the same one that limits the architecture comparison. Reflection "
+         "is a mechanism for catching a bad first patch, and on this bug set the first patch "
+         "was almost always correct, so the Reviewer re-reads work that needed no revision. "
+         "These results say the extra machinery does not pay for itself here; they do not say "
+         "it never would.", align=J)
+
+    doc.add_heading("7.8  Personas: who prompts, and who reports", level=2)
+    cp, cr = cmp_factor("persona", crows), cmp_factor("reporter", crows)
+    if cp["levels"]:
+        lv = list(cp["levels"])
+        table(doc, ["Metric"] + lv, [
+            ["Runs"] + [str(cp["levels"][k]["n"]) for k in lv],
+            ["Resolved"] + [f"{cp['levels'][k]['resolved_pct']:.0f}%" for k in lv],
+            ["Right file(s) changed"] + [f"{cp['levels'][k]['right_file_pct']:.0f}%" for k in lv],
+            ["Edit similarity"] + [f"{cp['levels'][k]['ref_sim']:.2f}" for k in lv],
+            ["Mean wall-clock"] + [f"{cp['levels'][k]['secs']:.1f}s" for k in lv],
+            ["Mean cost / run"] + [f"${cp['levels'][k]['cost']:.4f}" for k in lv],
+        ], widths=[1.9] + [1.1] * len(lv), size=9,
+            caption=f"Table 7.5  Agent personas, paired on {len(cp['bugs'])} bugs.")
+    para(doc,
+         "The agent personas make no measurable difference. All four resolve every run, change "
+         "the correct file every time, and sit within 0.03 of each other on edit similarity; "
+         "the senior persona is about a quarter slower for no benefit. On defects this "
+         "well-specified, persona prompting is decoration. We report it as a negative result "
+         "rather than omitting it, because the alternative — presenting an implemented "
+         "feature without the evidence that it does nothing here — would be misleading.",
+         align=J)
+    if cr["levels"]:
+        lv = list(cr["levels"])
+        table(doc, ["Metric"] + lv, [
+            ["Runs"] + [str(cr["levels"][k]["n"]) for k in lv],
+            ["**Resolved**"] + [f"{cr['levels'][k]['resolved']}/{cr['levels'][k]['n']} "
+                                f"({cr['levels'][k]['resolved_pct']:.0f}%)" for k in lv],
+            ["Right file(s) changed"] + [f"{cr['levels'][k]['right_file_pct']:.0f}%" for k in lv],
+            ["Edit similarity"] + [f"{cr['levels'][k]['ref_sim']:.2f}" for k in lv],
+            ["Diagnoser time"] + [f"{cr['levels'][k]['diag_s']:.1f}s" for k in lv],
+            ["Mean cost / run"] + [f"${cr['levels'][k]['cost']:.4f}" for k in lv],
+        ], widths=[2.1] + [1.7] * len(lv), size=9,
+            caption=f"Table 7.6  Reporter persona, paired on {len(cr['bugs'])} bugs. The "
+                    "enduser arm receives no stack trace at all.")
+    para(doc,
+         "The reporter persona is the most consequential of the three sweeps and produced the "
+         "most surprising result. The enduser arm withholds the failing test output entirely, "
+         "leaving the Diagnoser nothing but a symptom description — and it still resolved "
+         "every run, changed the right file every time, and scored slightly higher on edit "
+         "similarity while costing less. Localisation did not depend on the stack trace.",
+         align=J)
+    para(doc,
+         "This speaks directly to gap LG1. The deployed systems in the literature are driven by "
+         "an analyser finding or a crash that has already localised the defect; the result here "
+         "indicates that a tool-using ReAct agent can recover the location from a description "
+         "of the symptom alone. The caveat is the bug set: these defects are single-file and "
+         "the repositories are small, so search is cheap. Whether this survives a large "
+         "codebase is exactly the question a harder bug set would answer.", align=J)
+
+    doc.add_heading("7.9  Working on code the system was not designed around", level=2)
+    para(doc,
+         "The three alertsink defects test the system on pre-existing production code from a "
+         "different project of the team's, with the module and its test unmodified. All three "
+         "were resolved on the first attempt, each patch matching the reference fix exactly, "
+         "at a mean of 58 seconds and $0.023 per run — indistinguishable from the "
+         "purpose-built repositories.", align=J)
+    table(doc, ["Bug", "Defect", "Outcome"], [
+        ["ml01", "tail_lines slices from the start of the file, so ?limit=N returns the oldest "
+                 "alerts instead of the newest", "Resolved, attempt 1, exact match"],
+        ["ml02", "The per-alert record takes status from the top-level webhook payload, so every "
+                 "alert inherits the group status and resolutions are stored as firing",
+         "Resolved, attempt 1, exact match"],
+        ["ml03", "The POST response counts the payload dict's keys rather than the flattened "
+                 "records actually appended", "Resolved, attempt 1, exact match"],
+    ], widths=[0.5, 3.9, 1.9], size=9,
+        caption="Table 7.7  The alertsink bugs, from the team's own MLOps project.")
+    para(doc,
+         "One difference is worth recording: the LLM judge agreed with the tests on two of the "
+         "three runs, against 98–100% on the purpose-built repositories. A single "
+         "disagreement in three runs is not a trend, but it is consistent with a judge being "
+         "less certain on code it has less context for — and it is a further reason to treat "
+         "the executed test suite, not the judge, as the criterion.", align=J)
+
+    doc.add_heading("7.10  Deployment and demonstration", level=2)
     rich(doc, [("The system is deployed publicly at ", {}), (URL, {"mono": True}),
                (". The screenshots below are taken from that deployment.", {})], align=J)
     shots = [("new_fix.png", "Figure 7.1  Submitting a bug report."),
@@ -889,9 +1025,9 @@ def _team_and_conclusions(doc, helpers, stats, total_runs, total_cost, facts):
 
     doc.add_heading("C  Verification status", level=2)
     table(doc, ["Check", "Result"], [
-        ["Automated test suite", "146 tests passing, no API key required"],
+        ["Automated test suite", "153 tests passing, no API key required"],
         ["Lint", "ruff: all checks passed"],
-        ["Bug-set validity", "All 16 bugs fail when injected and pass when fixed"],
+        ["Bug-set validity", "All 19 bugs fail when injected and pass when fixed"],
         ["Framework restriction", "A test asserts only CrewAI and Google ADK are imported"],
         ["Judge independence", "Enforced at configuration load: the judge model must differ "
                                "from both generating models"],

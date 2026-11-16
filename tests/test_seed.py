@@ -96,3 +96,29 @@ def test_export_only_takes_the_requested_runs(tmp_path, monkeypatch):
     with sqlite3.connect(seed / "runs.db") as c:
         assert {r[0] for r in c.execute("SELECT task_id FROM runs")} == {"keep"}
     assert not (seed / "traces" / "drop.jsonl").exists()
+
+
+def test_harness_errors_are_never_seeded(tmp_path, monkeypatch):
+    """outcome 'error' means the harness died, not something the agents did.
+
+    A seeded error run shows a viewer 0 attempts, ~35ms, $0.00 and a repo path that does not
+    exist in the container - it reads as a defect in the system. 'escalated' is a real agent
+    outcome and must still be seeded.
+    """
+    from codefix import config
+    from codefix.blackboard.store import Blackboard
+    from codefix.eval.seed import pick_demo_runs
+
+    src = tmp_path / "src"
+    src.mkdir()
+    monkeypatch.setattr(config, "TRACES_DIR", src / "traces")
+    bb = Blackboard(src / "runs.db", src / "traces")
+    for tid, outcome in (("ok", "passed"), ("boom", "error"), ("gaveup", "escalated")):
+        bb.create_run(tid, bug_report="r", repo="/repo", arch="hierarchical",
+                      max_attempts=3, llm_mode="live")
+        bb.update_run(tid, status="done", outcome=outcome)
+
+    picked = pick_demo_runs(limit=10, src_db=src / "runs.db")
+
+    assert "boom" not in picked, "a harness error was seeded as demo data"
+    assert {"ok", "gaveup"} <= set(picked), "escalated runs should still be seeded"
