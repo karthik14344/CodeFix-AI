@@ -15,4 +15,5 @@ traces/
 bench_*.log
 
 bench_prompts.err
-.claude
+.claudedeploy_out.log
+deploy_err.log

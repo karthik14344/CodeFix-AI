@@ -1,0 +1,12 @@
+bindings:
+- members:
+  - serviceAccount:324501187617-compute@developer.gserviceaccount.com
+  role: roles/secretmanager.secretAccessor
+etag: BwZgZLo0WZA=
+version: 1
+bindings:
+- members:
+  - serviceAccount:324501187617-compute@developer.gserviceaccount.com
+  role: roles/secretmanager.secretAccessor
+etag: BwZgZLpvUZc=
+version: 1

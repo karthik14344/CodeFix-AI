@@ -34,7 +34,7 @@ Run @("services", "enable", "run.googleapis.com", "cloudbuild.googleapis.com", "
 # --- ZAI_API_KEY -> Secret Manager (read from .env, never printed) ----------------------------
 $line = Get-Content .env | Where-Object { $_ -match '^ZAI_API_KEY=(.+)$' } | Select-Object -First 1
 if (-not $line) { throw "ZAI_API_KEY is not set in .env" }
-$tmp = New-TemporaryFile
+$tmp = ([System.IO.Path]::GetTempFileName())
 try {
     [IO.File]::WriteAllText($tmp, ($line -replace '^ZAI_API_KEY=', '').Trim())
     & gcloud secrets describe zai-api-key *> $null
@@ -55,7 +55,7 @@ if ($LASTEXITCODE -ne 0) {
               Where-Object { $_ -match '^CODEFIX_A2A_TOKEN=(.+)$' } | Select-Object -First 1
     $token = if ($envTok) { ($envTok -replace '^CODEFIX_A2A_TOKEN=', '').Trim() }
              else { [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(32)) }
-    $tmp2 = New-TemporaryFile
+    $tmp2 = ([System.IO.Path]::GetTempFileName())
     try {
         [IO.File]::WriteAllText($tmp2, $token)
         Run @("secrets", "create", "codefix-a2a-token", "--replication-policy=automatic", "--data-file=$tmp2")
