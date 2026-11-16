@@ -79,7 +79,7 @@ const isResolved = r => (r.objective_pass === null || r.objective_pass === undef
   const judged = runs.filter(r => r.agreement != null);
   $('#kpis').innerHTML = [
     kpi('Runs', runs.length, `${archs.length} architectures`),
-    kpi('Resolved', `${pct(passed, runs.length)}%`, `${passed} confirmed in a fresh clone · ${runs.filter(r => r.outcome === 'escalated').length} escalated`),
+    kpi('Resolved', `${pct(passed, runs.length)}%`, `${runs.filter(r => Number(r.objective_pass) === 1).length} confirmed in a fresh clone` + (runs.some(r => r.objective_pass == null && r.outcome === 'passed') ? ` · ${runs.filter(r => r.objective_pass == null && r.outcome === 'passed').length} by Tester only` : '') + ` · ${runs.filter(r => r.outcome === 'escalated').length} escalated`),
     kpi('Judge accuracy', judged.length ? `${pct(judged.filter(r => r.agreement).length, judged.length)}%` : '–', `agreement with tests (${judged.length} judged)`),
     kpi('Mean attempts', mean(runs.map(r => r.attempts)).toFixed(2), `${runs.filter(r => r.attempts > 1).length} runs retried`),
     kpi('Mean cost / run', fmtUsd(mean(runs.map(r => r.cost_usd))), `total ${fmtUsd(runs.reduce((a, r) => a + r.cost_usd, 0))}`),
