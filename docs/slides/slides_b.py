@@ -237,7 +237,7 @@ def slide12(prs):
     tf = box(s, Inches(6.8), Inches(5.75), Inches(6.15), Inches(1.2))
     put(tf, "Dashboard", size=13, bold=True, color=ACCENT, first=True, space=3)
     put(tf, "Per-agent latency with the bottleneck flagged, attempts, cost and judge accuracy "
-            "across all 188 seeded runs — including three bugs in our own MLOps project.",
+            "across every seeded run — including three bugs in our own MLOps project.",
         size=11.5, color=MUTED, space=0)
     notes(s, "Demo script: pick ml01-alerts-limit-wrong-end (a bug in our own MLOps project), "
              "live LLM, hierarchical. ~60s, ~$0.02. Watch the ReAct steps, the A2A hand-offs to "
@@ -281,9 +281,9 @@ def slide13(prs, stats, total_cost, study):
     bullets(tf, [
         [("The bug set is seeded and single-file.", {"b": True}),
          (" Defects spanning modules, or needing a design change, are not represented.", {})],
-        [("No run failed its first patch,", {"b": True}),
-         (" so the retry and escalation paths — the main justification for the hierarchical "
-          "design — were exercised in testing but not in the live experiment.", {})],
+        [("The architecture runs never needed a retry,", {"b": True}),
+         (" so the topologies could not be compared on recovery. The loop ran live once "
+          "elsewhere and worked; escalation never ran live.", {})],
         [("Agent personas showed no measurable effect", {"b": True}),
          (" on defects this well-specified. Reported as a negative result.", {})],
         [("Deployed run data is not durable;", {"b": True}),

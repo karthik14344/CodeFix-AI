@@ -19,10 +19,28 @@ OUT = Path(__file__).resolve().parent / "screenshots"
 BASE = "https://codefix-ai-324501187617.asia-south1.run.app"
 
 
+def _retry(fn, attempts=4, wait=5.0):
+    """This machine's network intermittently aborts TLS handshakes (seen with gcloud too), so
+    a single timeout should not fail the whole capture."""
+    import time
+
+    for i in range(attempts):
+        try:
+            return fn()
+        except Exception as e:  # noqa: BLE001
+            if i == attempts - 1:
+                raise
+            print(f"  retry {i + 1}/{attempts - 1} after: {str(e).splitlines()[0][:90]}")
+            time.sleep(wait)
+
+
 def pick_run(base: str) -> str:
     """A hierarchical run that passed, for the richest live-run view."""
-    with urllib.request.urlopen(f"{base}/api/runs", timeout=120) as r:  # noqa: S310
-        data = json.load(r)
+    def fetch():
+        with urllib.request.urlopen(f"{base}/api/runs", timeout=120) as r:  # noqa: S310
+            return json.load(r)
+
+    data = _retry(fetch)
     runs = data if isinstance(data, list) else data.get("runs", [])
     for want in ("hierarchical", None):
         for run in runs:
@@ -52,7 +70,7 @@ def main() -> None:
         page = browser.new_page(viewport={"width": 1440, "height": 900},
                                 device_scale_factor=2)
         for name, url, wait in shots:
-            page.goto(url, wait_until="networkidle", timeout=120_000)
+            _retry(lambda u=url: page.goto(u, wait_until="networkidle", timeout=120_000))
             page.wait_for_timeout(wait)
             page.screenshot(path=str(OUT / name), full_page=True)
             print("  wrote", name)

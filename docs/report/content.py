@@ -404,9 +404,10 @@ def build(doc, *, rows, stats, facts, helpers):
         caption="Table 5.2  Qualitative comparison. Section 7.2 tests these claims empirically.")
     para(doc,
          "Section 7 reports what happened when the three were measured on identical bugs. The "
-         "honest result is that on this bug set the hierarchical advantage did not materialise, "
-         "because no run ever needed a retry — the condition its design exists to handle.",
-         align=J)
+         "honest result is that in the architecture comparison the hierarchical advantage did "
+         "not materialise, because none of its 139 runs needed a retry — the condition its "
+         "design exists to handle. The retry loop itself was exercised once, in a different "
+         "experiment, and worked as designed (Section 7.3).", align=J)
 
     doc.add_heading("5.4  State management: the Blackboard", level=2)
     para(doc,
@@ -749,6 +750,19 @@ def _results(doc, helpers, rows, stats, facts, archs, total_runs, total_cost):
          "bug set which never fails cannot demonstrate it. A set containing defects that "
          "genuinely resist a first patch would be required, and that is the obvious next "
          "experiment.", align=J)
+    para(doc,
+         "The retry loop was, however, exercised once in a live run, in the prompt-variant "
+         "sweep rather than here. On py09-snapshot-aliasing under ReAct+Reflection, the first "
+         "patch failed the test suite. The Manager's recorded decision reads: “The failure "
+         "is a trivial SyntaxError (two statements on one line) introduced by the Fixer's own "
+         "edit in inventory.py; retrying with the failure log.” It sent back only the Fixer, "
+         "with the TestReport attached by reference, and did not re-run the Diagnoser; the "
+         "second attempt passed and was confirmed in a fresh clone. This is the mechanism "
+         "Table 5.2 claims for the hierarchical design — retrying only the failed stage, "
+         "with the evidence — working in production. Two details are worth noting: the "
+         "Reflection reviewer had examined the broken patch and not caught the syntax error, "
+         "and it was the deterministic Tester that did. One instance shows the loop works; "
+         "it cannot support a comparison between architectures.", align=J)
 
     doc.add_heading("7.4  Response time of the system and of each agent", level=2)
     table(doc, ["Agent"] + archs, [
@@ -1025,8 +1039,13 @@ def _team_and_conclusions(doc, helpers, stats, total_runs, total_cost, facts):
           "did not apply to a clean checkout; only the fresh-clone re-test caught it.", {})],
         [("Architecture choice did not affect whether bugs were fixed. ", {"b": True}),
          ("All three topologies resolved every completed run. They differed in cost, latency "
-          "and variance, not in capability — and the hierarchical architecture's advantages "
-          "were never exercised because no run needed a retry.", {})],
+          "and variance, not in capability — and the hierarchical architecture's "
+          "advantages went unexercised in that comparison because none of its runs needed a "
+          "retry.", {})],
+        [("The self-correction loop works when it is needed. ", {"b": True}),
+         ("In the one live run whose first patch failed, the Manager identified the failure as "
+          "the Fixer's own syntax error, re-dispatched only the Fixer with the failure log, and "
+          "the second attempt passed — without re-running the Diagnoser.", {})],
         [("Plain ReAct was the most reliable prompt. ", {"b": True}),
          ("It resolved every run. Few-shot and ReAct+Reflection each lost one, on the same hard "
           "bug, at roughly half and two-thirds-more the cost respectively.", {})],
@@ -1051,9 +1070,11 @@ def _team_and_conclusions(doc, helpers, stats, total_runs, total_cost, facts):
     bullets(doc, [
         "The bug set is seeded and single-file. Real defects spanning several modules, or "
         "requiring a design change rather than a local edit, are not represented.",
-        "Because no run failed its first patch, the retry and escalation paths — the "
-        "principal justification for the hierarchical design — were exercised in testing "
-        "but not in the live experiment. A deliberately harder bug set is the clear next step.",
+        "No run in the architecture experiment failed its first patch, so the three topologies "
+        "could not be compared on recovery — the principal justification for the "
+        "hierarchical design. The retry path ran live exactly once, in another experiment, and "
+        "worked; escalation never ran live. A deliberately harder bug set is the clear next "
+        "step.",
         "The prompt-variant and persona sweeps are small — ten runs per variant, four per "
         "agent persona — because each varies one factor against the architecture "
         "experiment's baseline. They identify effects worth investigating; they do not have the "

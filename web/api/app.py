@@ -277,7 +277,8 @@ def dashboard(llm_mode: str = Query("live"), bench_id: str | None = None):
         where += " AND r.bench_id=?"
         args.append(bench_id)
     runs = bb.query(f"SELECT r.task_id, r.arch, r.outcome, r.status, r.failure_stage, r.attempts, r.duration_ms,"
-                    f" r.cost_usd, r.created_at, r.bug_id, r.bench_id, e.verdict, e.objective_pass, e.agreement"
+                    f" r.cost_usd, r.created_at, r.bug_id, r.bench_id, r.llm_mode,"
+                    f" e.verdict, e.objective_pass, e.agreement"
                     f" FROM runs r LEFT JOIN evaluations e ON e.task_id=r.task_id {where} ORDER BY r.created_at",
                     tuple(args))
     ids = tuple(r["task_id"] for r in runs) or ("",)

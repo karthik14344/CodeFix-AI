@@ -60,20 +60,26 @@ const legend = archs => archs.map(a => `<span><i style="background:${ARCH_COLOR[
 function kpi(label, value, hint = '') { return `<div class="card kpi"><div class="label">${label}</div><div class="value">${value}</div><div class="hint">${hint}</div></div>`; }
 
 async function load() {
+// Resolved means the independent fresh-clone re-test passed. The Tester's own verdict
+// (outcome === 'passed') is used only for runs that were never re-graded. The Tester can
+// pass a patch in its workspace that does not apply to a clean checkout - it happened twice -
+// so counting its verdict alone overstated the resolve rate.
+const isResolved = r => (r.objective_pass === null || r.objective_pass === undefined)
+  ? r.outcome === 'passed' : Number(r.objective_pass) === 1;
   const q = new URLSearchParams({ llm_mode: $('#mode').value });
   if ($('#bench').value) q.set('bench_id', $('#bench').value);
   const d = await api('/api/dashboard?' + q);
   const runs = d.runs.filter(r => r.status !== 'running');
   $('#scope').textContent = `${runs.length} finished runs`;
-  $('#mockBanner').innerHTML = $('#mode').value !== 'live' ? '<div class="banner warn">⚠ Includes mock (offline oracle) runs: they validate the pipeline mechanics, not model quality.</div>' : '';
+  $('#mockBanner').innerHTML = runs.some(r => r.llm_mode === 'mock') ? '<div class="banner warn">⚠ Includes mock (offline oracle) runs: they validate the pipeline mechanics, not model quality.</div>' : '';
   const archs = Object.keys(ARCH_COLOR).filter(a => runs.some(r => r.arch === a));
 
   // ---- KPIs
-  const passed = runs.filter(r => r.outcome === 'passed').length;
+  const passed = runs.filter(isResolved).length;
   const judged = runs.filter(r => r.agreement != null);
   $('#kpis').innerHTML = [
     kpi('Runs', runs.length, `${archs.length} architectures`),
-    kpi('Resolved', `${pct(passed, runs.length)}%`, `${passed} passed · ${runs.filter(r => r.outcome === 'escalated').length} escalated`),
+    kpi('Resolved', `${pct(passed, runs.length)}%`, `${passed} confirmed in a fresh clone · ${runs.filter(r => r.outcome === 'escalated').length} escalated`),
     kpi('Judge accuracy', judged.length ? `${pct(judged.filter(r => r.agreement).length, judged.length)}%` : '–', `agreement with tests (${judged.length} judged)`),
     kpi('Mean attempts', mean(runs.map(r => r.attempts)).toFixed(2), `${runs.filter(r => r.attempts > 1).length} runs retried`),
     kpi('Mean cost / run', fmtUsd(mean(runs.map(r => r.cost_usd))), `total ${fmtUsd(runs.reduce((a, r) => a + r.cost_usd, 0))}`),
@@ -101,7 +107,7 @@ async function load() {
   // ---- architecture comparison
   const stats = archs.map(a => {
     const rs = runs.filter(r => r.arch === a), j = rs.filter(r => r.agreement != null);
-    return { a, n: rs.length, resolved: pct(rs.filter(r => r.outcome === 'passed').length, rs.length),
+    return { a, n: rs.length, resolved: pct(rs.filter(isResolved).length, rs.length),
       judgePass: pct(rs.filter(r => r.verdict === 'pass').length, rs.filter(r => r.verdict).length),
       judgeAcc: pct(j.filter(r => r.agreement).length, j.length), attempts: mean(rs.map(r => r.attempts)),
       cost: mean(rs.map(r => r.cost_usd)), dur: mean(rs.map(r => r.duration_ms || 0)) };
@@ -114,7 +120,7 @@ async function load() {
 
   // ---- failure stages
   const stageCounts = {};
-  runs.filter(r => r.outcome !== 'passed').forEach(r => { const k = r.failure_stage || r.outcome || 'unknown'; stageCounts[k] = (stageCounts[k] || 0) + 1; });
+  runs.filter(r => !isResolved(r)).forEach(r => { const k = r.failure_stage || (r.outcome === 'passed' ? 'passed by Tester, not reproducible in a fresh clone' : r.outcome) || 'unknown'; stageCounts[k] = (stageCounts[k] || 0) + 1; });
   hbar($('#stages'), Object.entries(stageCounts).sort((a, b) => b[1] - a[1]).map(([label, value]) => ({ label, value, color: 'var(--series-1)' })), { fmt: v => Math.round(v) });
 
   // ---- attempts distribution

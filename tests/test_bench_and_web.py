@@ -95,4 +95,10 @@ def test_web_api_flow():
     assert c.post(f"/api/runs/{tid}/pr", json={"confirm": True}).status_code == 409  # already resolved
     dash = c.get("/api/dashboard", params={"llm_mode": "mock"}).json()
     assert dash["runs"] and dash["localisation"]["p2p"]["hit"] == 1
+    # The dashboard UI decides whether to warn about mock runs, and which runs count as
+    # resolved, from these two fields. Without llm_mode every row looked non-live and the page
+    # showed a "includes mock runs" warning over a dataset with no mock runs in it.
+    row = dash["runs"][0]
+    assert row["llm_mode"] == "mock"
+    assert "objective_pass" in row
     assert any(r["task_id"] == tid for r in c.get("/api/runs").json())

@@ -254,11 +254,12 @@ def slide5(prs, stats):
              (" separate the three — each resolved every completed run. Hierarchical is the most "
               "expensive and most variable (23.0s vs 11.2s std-dev), and here it bought "
               "nothing, because ", {}),
-             ("no run ever needed a retry", {"b": True}),
-             (" — precisely the situation its design exists for. Its advantage is failure "
-              "handling and auditability, and a bug set that never fails cannot demonstrate it. "
-              "That is a limitation of our experiment, not a win for the alternatives.", {})],
-            color=WARN, size=13.5)
+             ("none of these 139 runs needed a retry", {"b": True}),
+             (" — precisely the situation its design exists for. A limitation of our "
+              "experiment, not a win for the alternatives. (The retry loop did run live once, "
+              "in the prompt sweep: the Manager re-dispatched only the Fixer with the failure "
+              "log, and attempt 2 passed.)", {})],
+            color=WARN, size=13)
     notes(s, "Say this plainly: we did not get the result we expected and we are reporting it. "
              "Hierarchical costs more and varies more. Its justification is failure handling; "
              "these bugs never failed. The next experiment is a bug set that resists the first "
