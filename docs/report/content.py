@@ -1025,7 +1025,7 @@ def _team_and_conclusions(doc, helpers, stats, total_runs, total_cost, facts):
 
     doc.add_heading("C  Verification status", level=2)
     table(doc, ["Check", "Result"], [
-        ["Automated test suite", "153 tests passing, no API key required"],
+        ["Automated test suite", "154 tests passing, no API key required"],
         ["Lint", "ruff: all checks passed"],
         ["Bug-set validity", "All 19 bugs fail when injected and pass when fixed"],
         ["Framework restriction", "A test asserts only CrewAI and Google ADK are imported"],

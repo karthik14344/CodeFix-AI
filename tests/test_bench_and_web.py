@@ -8,11 +8,17 @@ pytestmark = pytest.mark.usefixtures("isolated")
 
 
 def test_bugset_loads_and_fix_reverses_injection():
-    from codefix.eval.bugset import load_bugs
+    from codefix.eval.bugset import REPOS_DIR, load_bugs
 
     bugs = load_bugs()
     assert len(bugs) >= 14 and len({b.id for b in bugs}) == len(bugs)
-    assert {b.repo for b in bugs} == {"pyshop", "textkit"}
+    # every bug names a repository that actually exists, and every injected file is in it.
+    # (Asserting a fixed set of repo names instead would just need editing each time a repo is
+    # added, without checking anything the loader could get wrong.)
+    for b in bugs:
+        assert (REPOS_DIR / b.repo).is_dir(), f"{b.id} names missing repo {b.repo}"
+        for f in b.files:
+            assert (REPOS_DIR / b.repo / f).is_file(), f"{b.id} injects into missing file {f}"
     b = load_bugs(["py08"])[0]
     assert b.fix_edits[0]["find"] == b.inject[-1]["replace"]
 
