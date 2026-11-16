@@ -89,3 +89,21 @@ def test_markdown_includes_every_level_and_the_paired_bug_list():
 
     assert "react (baseline)" in md and "fewshot" in md and "react-reflect" in md
     assert "bugA" in md and "Resolved" in md
+
+
+def test_harness_errors_are_excluded_by_the_loader(tmp_path, monkeypatch):
+    """A run killed mid-flight (outcome 'error') is not an agent failure and must not lower a
+    level's resolve rate. Regression: one cancelled run scored few-shot at 82% instead of 90%."""
+    from codefix.blackboard.store import Blackboard
+    from codefix.eval.compare import _load
+
+    bb = Blackboard(tmp_path / "runs.db", tmp_path / "traces")
+    for tid, outcome in (("done", "passed"), ("killed", "error")):
+        bb.create_run(tid, bug_report="r", repo="/repo", arch="hierarchical", max_attempts=3,
+                      llm_mode="live", meta={"variant": "fewshot"})
+        bb.update_run(tid, status="done", outcome=outcome)
+
+    ids = {r["task_id"] for r in _load(tmp_path / "runs.db")}
+
+    assert "killed" not in ids
+    assert "done" in ids

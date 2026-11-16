@@ -37,9 +37,74 @@ MONO = "Consolas"
 
 
 def bench_rows() -> list[dict]:
+    """Completed runs of the architecture experiment.
+
+    A row with no outcome is a run that was still in flight when the benchmark process was
+    killed (the session ended at run 140 of 144). It has no duration, no judge verdict and no
+    re-test, so counting it would score an interrupted run as an agent failure - which is how
+    "sequential: 46/47, one JS bug unresolved" crept into an earlier draft. It is excluded here
+    and disclosed in the text instead.
+    """
     p = ROOT / "benchmarks" / "results" / BENCH_ID / "runs.csv"
     with p.open(encoding="utf-8", newline="") as f:
-        return list(csv.DictReader(f))
+        return [r for r in csv.DictReader(f) if (r.get("outcome") or "").strip()]
+
+
+def interrupted_runs() -> int:
+    p = ROOT / "benchmarks" / "results" / BENCH_ID / "runs.csv"
+    with p.open(encoding="utf-8", newline="") as f:
+        return sum(1 for r in csv.DictReader(f) if not (r.get("outcome") or "").strip())
+
+
+def study_totals() -> dict:
+    """Every live run across all five experiments, from runs.db - not just the architecture CSV.
+
+    Categories are kept separate rather than folded into one percentage, because each means
+    something different: a harness error is not an agent failure, and an ungraded demo run is
+    not a resolved one.
+    """
+    import sqlite3
+
+    from codefix import config
+
+    con = sqlite3.connect(config.DB_PATH)
+    try:
+        q = lambda s: con.execute(s).fetchone()  # noqa: E731
+        live = "r.llm_mode <> 'mock' AND r.outcome IS NOT NULL"
+        recorded = q(f"SELECT COUNT(*) FROM runs r WHERE {live}")[0]
+        harness_err = q(f"SELECT COUNT(*) FROM runs r WHERE {live} AND r.outcome = 'error'")[0]
+        base = (f"FROM runs r LEFT JOIN evaluations e USING(task_id) "
+                f"WHERE {live} AND r.outcome <> 'error'")
+        agent_runs, graded, resolved, exact, agree, cost = q(
+            "SELECT COUNT(*), SUM(e.verdict IS NOT NULL), SUM(e.objective_pass = 1),"
+            f" SUM(e.ref_exact = 1), SUM(e.agreement = 1), SUM(r.cost_usd) {base}")
+        bugs = q(f"SELECT COUNT(DISTINCT r.bug_id) {base} AND r.bug_id IS NOT NULL")[0]
+        unresolved = con.execute(
+            "SELECT r.bug_id, r.meta, e.objective_pass FROM runs r JOIN evaluations e "
+            f"USING(task_id) WHERE {live} AND r.outcome <> 'error' AND e.objective_pass = 0"
+        ).fetchall()
+        by_bench = dict(con.execute(
+            f"SELECT COALESCE(r.bench_id, ''), COUNT(*) FROM runs r WHERE {live} "
+            "GROUP BY r.bench_id").fetchall())
+    finally:
+        con.close()
+    # The five reported experiments, by benchmark id. Everything else is accounted for
+    # explicitly as "other" rather than silently folded into a total that does not add up.
+    experiments = {"architecture": BENCH_ID, "variant": "bench-20261116-171853",
+                   "persona": "bench-20261116-174417", "reporter": "bench-20261116-175942",
+                   "own_code": "bench-20261116-183335"}
+    exp_counts = {k: by_bench.get(v, 0) for k, v in experiments.items()}
+    other = {
+        "pilot": by_bench.get("bench-20261115-180009", 0),          # live smoke test of bench
+        "cancelled": by_bench.get("bench-20261116-163728", 0)       # partial runs from the
+                     + by_bench.get("bench-20261116-164231", 0),    # oversized sweep, cancelled
+        "demos": by_bench.get("", 0),                               # ad-hoc end-to-end demos
+    }
+    return {"recorded": recorded, "harness_errors": harness_err, "agent_runs": agent_runs,
+            "graded": graded or 0, "ungraded": agent_runs - (graded or 0),
+            "resolved": resolved or 0, "unresolved": len(unresolved),
+            "exact": exact or 0, "agree": agree or 0, "cost": cost or 0.0, "bugs": bugs,
+            "interrupted": interrupted_runs(), "experiments": exp_counts, "other": other}
 
 
 def num(row: dict, key: str, default=0.0) -> float:
@@ -104,6 +169,7 @@ def live_facts() -> dict:
         "n_tools": len(tools) - 2,          # ctx, main
         "diag_tools": DIAG_TOOLS,
         "a2a_skills": [sk.id for sk in agent_card("http://x/").skills],
+        "study": study_totals(),
     }
 
 

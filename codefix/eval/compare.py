@@ -34,8 +34,11 @@ SELECT r.task_id, r.bench_id, r.bug_id, r.arch, r.outcome, r.attempts, r.duratio
           AS diagnoser_ms,
        e.objective_pass, e.ref_exact, e.ref_similarity, e.ref_file_match, e.verdict, e.agreement
 FROM runs r LEFT JOIN evaluations e ON e.task_id = r.task_id
-WHERE r.llm_mode <> 'mock' AND r.outcome IS NOT NULL
+WHERE r.llm_mode <> 'mock' AND r.outcome IS NOT NULL AND r.outcome <> 'error'
 """
+# outcome 'error' is the harness dying (a killed process, a crashed tool server), not something
+# the agents did. Counting one scored a cancelled run as a few-shot failure and pulled that
+# variant's resolve rate from 90% to 82%.
 
 
 def _load(db: Path | None = None) -> list[dict]:

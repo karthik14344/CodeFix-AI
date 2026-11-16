@@ -139,9 +139,12 @@ def build(doc, *, rows, stats, facts, helpers):
         [("A three-way evaluation of every patch: the project's own tests re-run in a fresh "
           "clone, a comparison against the known-good reference fix, and an LLM-as-judge whose "
           "agreement with the tests is itself measured.", {})],
-        [(f"An empirical study of {total_runs} live runs", {"b": True}),
-         (" across the three architectures, reporting resolve rate, wall-clock time, run-to-run "
-          "variance, per-agent latency, token volume and real monetary cost.", {})],
+        [(f"An empirical study of {facts['study']['recorded']} live runs", {"b": True}),
+         (f" across five experiments — {total_runs} of them comparing the three "
+          "architectures, the rest varying the prompt strategy, the agent persona and the "
+          "reporter persona, and testing the system on the team's own MLOps code. Each reports "
+          "resolve rate, wall-clock time, run-to-run variance, per-agent latency, token volume "
+          "and real monetary cost.", {})],
     ])
     page_break(doc)
 
@@ -602,16 +605,19 @@ def _results(doc, helpers, rows, stats, facts, archs, total_runs, total_cost):
          "named. Reversing the injection yields the known-good fix used for reference scoring.",
          align=J)
     diffs = Counter(r["difficulty"] for r in rows if r.get("difficulty"))
+    study = facts["study"]
     table(doc, ["Dimension", "Levels", "Count"], [
-        ["Bugs", "16 injected defects across 2 repositories and 2 languages", "16"],
+        ["Bugs", "16 injected defects across pyshop and textkit, 2 languages", "16"],
         ["Difficulty", f"easy, medium, hard (runs: {diffs.get('easy',0)} / "
                        f"{diffs.get('medium',0)} / {diffs.get('hard',0)})", "3"],
         ["Architecture", ", ".join(archs), str(len(archs))],
         ["Repetitions", "Each (bug, architecture) pair repeated to expose run-to-run variance",
          "3"],
-        ["Total runs", "Live model calls, every run graded three ways", f"**{total_runs}**"],
+        ["Completed runs", f"Live model calls, every run graded three ways "
+                           f"({study['interrupted']} further run interrupted, excluded)",
+         f"**{total_runs}**"],
     ], widths=[1.1, 3.9, 0.8], size=9,
-        caption="Table 7.1  Experimental design.")
+        caption="Table 7.1  Design of Experiment 1, the architecture comparison.")
     para(doc,
          "Repetition is what makes variance observable. Because the models are sampled rather "
          "than deterministic, a single run per configuration cannot distinguish a genuine "
@@ -624,18 +630,25 @@ def _results(doc, helpers, rows, stats, facts, archs, total_runs, total_cost):
          "with three repetitions, the sweeps run only the non-baseline levels and are compared "
          "back to it pairwise on the same bugs — 36 additional runs rather than 112, and a "
          "paired comparison rather than one across different bug sets.", align=J)
+    ex, ot = study["experiments"], study["other"]
     table(doc, ["Experiment", "Factor varied", "Levels", "Runs"], [
         ["1  Architecture", "Orchestration topology",
-         "hierarchical, sequential, p2p × 16 bugs × 3 repetitions", "140"],
+         "hierarchical, sequential, p2p × 16 bugs × 3 repetitions",
+         str(ex["architecture"])],
         ["2  Prompt variant", "How the Diagnoser is prompted",
-         "fewshot, react-reflect × 8 bugs (baseline: react)", "16"],
+         "fewshot, react-reflect × 8 bugs (baseline: react)", str(ex["variant"])],
         ["3  Agent persona", "System-prompt persona of Diagnoser, Fixer, Reviewer",
-         "senior, novice, security × 4 bugs (baseline: default)", "12"],
+         "senior, novice, security × 4 bugs (baseline: default)", str(ex["persona"])],
         ["4  Reporter persona", "Who filed the report, and what they attached",
-         "enduser — symptom only, no stack trace × 8 bugs", "8"],
+         "enduser — symptom only, no stack trace × 8 bugs", str(ex["reporter"])],
         ["5  Own-codebase check", "Repository provenance",
-         "3 alertsink bugs from the team's own MLOps project", "3"],
-        ["", "", "**Total live evaluated runs (incl. demonstrations)**", "**188**"],
+         "3 alertsink bugs from the team's own MLOps project", str(ex["own_code"])],
+        ["", "", "**Subtotal: the five experiments**", f"**{sum(ex.values())}**"],
+        ["Other live runs", "Not part of a reported experiment",
+         f"pilot of the live harness ({ot['pilot']}), partial runs from a cancelled oversized "
+         f"sweep ({ot['cancelled']}), end-to-end demonstrations ({ot['demos']})",
+         str(sum(ot.values()))],
+        ["", "", "**Total live runs recorded**", f"**{study['recorded']}**"],
     ], widths=[1.35, 1.75, 2.4, 0.7], size=8.5,
         caption="Table 7.1b  The five experiments. Each varies one factor; the rest stay at "
                 "baseline.")
@@ -666,17 +679,43 @@ def _results(doc, helpers, rows, stats, facts, archs, total_runs, total_cost):
         ["Mean envelope size (bytes)"] + [f"{stats[a]['bytes']:.0f}" for a in archs],
     ], widths=[2.3] + [1.3] * len(archs), size=9,
         caption="Table 7.2  Headline comparison across architectures, identical bugs.")
+    arch_res = sum(s["resolved"] for s in stats.values())
     para(doc,
-         "The system works as intended. Across all three architectures the agents resolved "
-         f"{sum(s['resolved'] for s in stats.values())} of {total_runs} runs, where "
+         "The system works as intended. In the architecture experiment the agents resolved "
+         f"all {arch_res} of {total_runs} completed runs, in every architecture, where "
          "“resolved” means the final patch was re-applied to a clean clone and the "
-         "entire suite passed — not that an agent said so. The single non-resolution was one "
-         "JavaScript bug under the sequential architecture.", align=J)
+         "entire suite passed — not that an agent said so. One further run was still in "
+         "flight when the benchmark process was stopped; it has no outcome, no judge verdict "
+         "and no re-test, so it is excluded rather than counted as a failure.", align=J)
+    study = facts["study"]
+    table(doc, ["Across the whole study", "Runs"], [
+        ["Live runs recorded, all five experiments plus pilot, cancelled and demo runs",
+         str(study["recorded"])],
+        ["− harness errors (a process killed mid-run, not an agent outcome)",
+         str(study["harness_errors"])],
+        ["= runs where the agents ran to completion", str(study["agent_runs"])],
+        ["− end-to-end demonstrations, not independently re-graded",
+         str(study["ungraded"])],
+        ["= runs graded three ways", f"**{study['graded']}**"],
+        ["**Resolved — suite green in a fresh clone**",
+         f"**{study['resolved']}  ({100*study['resolved']/study['graded']:.1f}%)**"],
+        ["Not resolved", str(study["unresolved"])],
+    ], widths=[5.0, 1.3], size=9,
+        caption="Table 7.2b  Every live run, accounted for. Each exclusion is a different kind "
+                "of thing and is kept separate.")
+    para(doc,
+         f"Across all {study['graded']} graded runs the system resolved {study['resolved']}. "
+         f"The {study['unresolved']} that were not resolved are the most instructive results in "
+         "the study, and Section 7.7 examines them: in both, the Tester agent reported the "
+         "suite green inside its own workspace, the LLM judge rated the patch a pass, and only "
+         "the independent fresh-clone re-test caught that the recorded patch did not apply.",
+         align=J)
 
     doc.add_heading("7.3  Architecture comparison", level=2)
     para(doc,
-         "Resolve rate does not discriminate between the architectures: all three are at or "
-         "near 100%. The meaningful differences are in cost, latency and stability.", align=J)
+         "Resolve rate does not discriminate between the architectures: all three resolved "
+         "every completed run. The meaningful differences are in cost, latency and stability.",
+         align=J)
     best_cost = min(archs, key=lambda a: stats[a]["cost"] / stats[a]["n"])
     best_time = min(archs, key=lambda a: stats[a]["secs"])
     most_var = max(archs, key=lambda a: stats[a]["sd"])
@@ -733,15 +772,30 @@ def _results(doc, helpers, rows, stats, facts, archs, total_runs, total_cost):
     agree = sum(s["agree"] for s in stats.values())
     judged = sum(s["judged"] for s in stats.values())
     ref_exact = sum(s["ref_exact"] for s in stats.values())
+    study = facts["study"]
+    table(doc, ["Validation method", "Model-free?", "Architecture experiment",
+                "Whole study"], [
+        ["Re-test in a fresh clone (resolved)", "Yes",
+         f"{sum(s['resolved'] for s in stats.values())}/{total_runs}",
+         f"{study['resolved']}/{study['graded']}"],
+        ["Reference fix: exact match", "Yes",
+         f"{ref_exact}/{total_runs} ({100*ref_exact/total_runs:.0f}%)",
+         f"{study['exact']}/{study['graded']} ({100*study['exact']/study['graded']:.0f}%)"],
+        ["LLM judge agrees with the tests", "No",
+         f"{agree}/{judged} ({100*agree/judged:.0f}%)",
+         f"{study['agree']}/{study['graded']} ({100*study['agree']/study['graded']:.0f}%)"],
+    ], widths=[2.4, 0.9, 1.5, 1.5], size=9,
+        caption="Table 7.3b  The three graders, on the architecture experiment and the whole "
+                "study.")
     para(doc,
-         f"The judge agreed with the objective test outcome on {agree} of {judged} judged runs "
-         f"({100*agree/judged:.0f}%). Because the judge never sees the test results, this is a "
-         "measurement of the judge rather than of the system; at this level of agreement the "
-         "judge is a usable proxy when tests are unavailable, but the tests remain the "
-         "criterion.", align=J)
+         "Because the judge never sees the test results, its agreement with them is a "
+         "measurement of the judge rather than of the system. At this level of agreement it is "
+         "a usable proxy when tests are unavailable — but its disagreements are not random. "
+         "In the two unresolved runs of Section 7.7 the judge rated an unreproducible patch a "
+         "pass with 0.95–0.97 confidence, which is precisely the case where a proxy would "
+         "have misled.", align=J)
     para(doc,
-         f"Against the reference fix, {ref_exact} of {total_runs} patches "
-         f"({100*ref_exact/total_runs:.0f}%) were byte-identical to the known-good fix modulo "
+         "About three-quarters of patches were byte-identical to the known-good fix modulo "
          "whitespace, with a mean edit similarity of "
          f"{sum(s['ref_sim']*s['n'] for s in stats.values())/total_runs:.2f} and the correct "
          "file set changed in virtually every run. The gap between ~75% exact and ~100% "
@@ -755,10 +809,19 @@ def _results(doc, helpers, rows, stats, facts, archs, total_runs, total_cost):
     tok_in = sum(num(r, "input_tokens") for r in rows)
     tok_c = sum(num(r, "cached_tokens") for r in rows)
     tok_out = sum(num(r, "output_tokens") for r in rows)
+    study = facts["study"]
     bullets(doc, [
-        f"{total_runs} runs in {secs/60:.0f} minutes of wall-clock ({secs/total_runs:.1f}s per run)",
-        f"Total pipeline cost ${total_cost:.2f} (${total_cost/total_runs:.4f} per run)",
-        f"Tokens: {tok_in:,.0f} fresh input, {tok_c:,.0f} cached input, {tok_out:,.0f} output",
+        [("Architecture experiment: ", {"b": True}),
+         (f"{total_runs} runs in {secs/60:.0f} minutes of wall-clock "
+          f"({secs/total_runs:.1f}s per run), pipeline cost ${total_cost:.2f} "
+          f"(${total_cost/total_runs:.4f} per run)", {})],
+        [("Tokens: ", {"b": True}),
+         (f"{tok_in:,.0f} fresh input, {tok_c:,.0f} cached input, {tok_out:,.0f} output", {})],
+        [("Whole study: ", {"b": True}),
+         (f"{study['recorded']} live runs for ${study['cost']:.2f} in total "
+          f"(${study['cost']/study['recorded']:.4f} per run). The per-run figure is a little "
+          "higher than the architecture experiment's because the react-reflect sweep adds a "
+          "Reviewer call to every run.", {})],
     ])
     para(doc,
          "Cached input accounts for more than half of all prompt tokens, because the Diagnoser's "
@@ -794,19 +857,30 @@ def _results(doc, helpers, rows, stats, facts, archs, total_runs, total_cost):
         ], widths=[2.1] + [1.4] * len(lv), size=9,
             caption=f"Table 7.4  Prompt variants, paired on {len(cv['bugs'])} bugs.")
     para(doc,
-         "Plain ReAct is the best of the three, and the two alternatives fail in opposite "
-         "directions. The few-shot variant is the cheapest and fastest because it makes 1.8 "
-         "model calls instead of 4.5 and runs no tool loop at all — but without tools it must "
-         "infer the location from retrieved context, and it changes the right file only 82% of "
-         "the time. ReAct+Reflection adds a Reviewer that critiques the patch before it is "
-         "tested: it costs about two-thirds more and takes half again as long, and still "
-         "resolves no better than plain ReAct.", align=J)
+         "Plain ReAct resolved every run; each alternative lost one. The two variants differ "
+         "mainly in what they cost. Few-shot is the cheapest and fastest because it makes 1.8 "
+         "model calls instead of 4.5 and runs no tool loop at all. ReAct+Reflection adds a "
+         "Reviewer that critiques the patch before it is tested: it costs about two-thirds more "
+         "and takes half again as long, and resolves no better.", align=J)
     para(doc,
-         "The explanation is the same one that limits the architecture comparison. Reflection "
-         "is a mechanism for catching a bad first patch, and on this bug set the first patch "
-         "was almost always correct, so the Reviewer re-reads work that needed no revision. "
-         "These results say the extra machinery does not pay for itself here; they do not say "
-         "it never would.", align=J)
+         "The two failures are worth examining because they are the same failure. Both are "
+         "py11-sku-dashes, one of the two hard bugs, and in both the sequence was identical: "
+         "the agent wrote a broad multi-file patch (normalising SKUs in the catalogue and in "
+         "every inventory method, rather than the reference fix's single change); the Tester "
+         "agent applied it in its own workspace and reported the suite green; the LLM judge, "
+         "reading the diff, rated it a pass at 0.95–0.97 confidence; and the independent "
+         "re-test then found that the recorded patch did not apply to a clean checkout at all. "
+         "Two of the system's three graders were wrong, and only the model-free one was right.",
+         align=J)
+    para(doc,
+         "Two cautions follow. First, these are one failure each in ten runs, on a single bug, "
+         "so they suggest rather than establish that the non-default variants are less "
+         "reliable on hard defects. Second, the file-match figure in Table 7.4 is lower for the "
+         "same reason, not because either variant edited the wrong file: a patch that does not "
+         "apply scores zero on every reference measure. What the episode does establish is the "
+         "case for re-grading in a fresh clone. A Tester passing a patch in its own workspace "
+         "is not the same as the patch being reproducible, and it was the re-test, not the "
+         "Tester or the judge, that told them apart.", align=J)
 
     doc.add_heading("7.8  Personas: who prompts, and who reports", level=2)
     cp, cr = cmp_factor("persona", crows), cmp_factor("reporter", crows)
@@ -928,37 +1002,50 @@ def _team_and_conclusions(doc, helpers, stats, total_runs, total_cost, facts):
     page_break(doc)
 
     doc.add_heading("9  Conclusions", level=1)
+    study = facts["study"]
     para(doc,
          f"{TITLE} resolves software defects end to end from a natural-language bug report, "
          "using five role-specialised agents spread across two frameworks that cooperate over "
-         "an open protocol. Across "
-         f"{total_runs} live runs on 16 reproducible bugs in two languages, the system resolved "
-         f"{sum(s['resolved'] for s in stats.values())} of them, where resolution means the "
-         "patch was re-applied to a clean clone and the project's entire test suite passed.",
+         f"an open protocol. Across {study['recorded']} live runs in five experiments, on "
+         f"{study['bugs']} reproducible bugs in three repositories and two languages, it "
+         f"resolved {study['resolved']} of the {study['graded']} runs that were graded "
+         f"({100*study['resolved']/study['graded']:.1f}%), where resolution means the patch was "
+         "re-applied to a clean clone and the project's entire test suite passed. In the "
+         f"architecture comparison alone it resolved all {total_runs} completed runs.",
          align=J)
     para(doc, "Principal findings:", bold=True, space_after=3)
     bullets(doc, [
         [("The agent set is derived, not assumed. ", {"b": True}),
          ("Each of the five agents traces to a requirement which traces in turn to a literature "
           "gap or a problem-statement claim (Tables 4.1 and 5.1).", {})],
-        [("Role specialisation makes verification independent. ", {"b": True}),
-         ("The Tester runs no model at all, so the success criterion is an executed test suite "
-          "rather than any agent's opinion.", {})],
+        [("Role specialisation makes verification independent — and it needed a second "
+          "layer. ", {"b": True}),
+         ("The Tester runs no model, so the criterion is an executed suite rather than an "
+          "agent's opinion. But in both unresolved runs the Tester itself passed a patch that "
+          "did not apply to a clean checkout; only the fresh-clone re-test caught it.", {})],
         [("Architecture choice did not affect whether bugs were fixed. ", {"b": True}),
-         ("All three topologies resolved at or near 100%. They differed in cost, latency and "
-          "variance, not in capability — and the hierarchical architecture's advantages "
+         ("All three topologies resolved every completed run. They differed in cost, latency "
+          "and variance, not in capability — and the hierarchical architecture's advantages "
           "were never exercised because no run needed a retry.", {})],
+        [("Plain ReAct was the most reliable prompt. ", {"b": True}),
+         ("It resolved every run. Few-shot and ReAct+Reflection each lost one, on the same hard "
+          "bug, at roughly half and two-thirds-more the cost respectively.", {})],
+        [("A stack trace turned out to be unnecessary. ", {"b": True}),
+         ("Given only a symptom description and no trace, the Diagnoser still localised and "
+          "the system resolved every run — directly addressing gap LG1.", {})],
         [("Localisation is where the time goes. ", {"b": True}),
          ("The Diagnoser consumes roughly half of each run's wall-clock, confirming that "
           "finding the defect, not writing the fix, is the expensive part.", {})],
         [("A judge is a usable proxy but not a substitute. ", {"b": True}),
-         (f"Judge–test agreement was {100*sum(s['agree'] for s in stats.values())/max(sum(s['judged'] for s in stats.values()),1):.0f}%; "
-          "roughly a quarter of correct patches differed from the reference fix while still "
-          "passing every test, so neither the judge nor reference matching could replace "
-          "execution.", {})],
+         (f"Judge–test agreement was {100*study['agree']/max(study['graded'],1):.0f}% "
+          "across the study, yet the judge rated both unreproducible patches a pass at "
+          "0.95–0.97, and roughly a quarter of correct patches differed from the reference "
+          "fix while still passing every test. Neither the judge nor reference matching could "
+          "replace execution.", {})],
         [("Cost is modest and measurable. ", {"b": True}),
-         (f"${total_cost/total_runs:.4f} per resolved defect, with cached input more than half "
-          "of all prompt tokens.", {})],
+         (f"${study['cost']:.2f} for all {study['recorded']} runs "
+          f"(${study['cost']/study['recorded']:.4f} each), with cached input more than half of "
+          "all prompt tokens.", {})],
     ])
     para(doc, "Limitations and future work:", bold=True, space_after=3)
     bullets(doc, [
@@ -967,8 +1054,14 @@ def _team_and_conclusions(doc, helpers, stats, total_runs, total_cost, facts):
         "Because no run failed its first patch, the retry and escalation paths — the "
         "principal justification for the hierarchical design — were exercised in testing "
         "but not in the live experiment. A deliberately harder bug set is the clear next step.",
-        "The prompt-variant and persona dimensions are implemented and available but held at "
-        "their defaults in the reported experiment, so architecture remained the only variable.",
+        "The prompt-variant and persona sweeps are small — ten runs per variant, four per "
+        "agent persona — because each varies one factor against the architecture "
+        "experiment's baseline. They identify effects worth investigating; they do not have the "
+        "statistical weight of the 139-run architecture comparison.",
+        "Why the two unresolved patches did not apply to a clean checkout, when the Tester had "
+        "applied them successfully in its own workspace, is not yet diagnosed. Both were broad "
+        "multi-file patches on the same bug. Making the Tester grade the exact diff that will be "
+        "recorded, rather than its workspace state, would close the gap.",
         "Run data on the deployed service is not persistent; a cold instance restores a seeded "
         "snapshot of the evaluation rather than accumulating history.",
     ])
@@ -1025,7 +1118,7 @@ def _team_and_conclusions(doc, helpers, stats, total_runs, total_cost, facts):
 
     doc.add_heading("C  Verification status", level=2)
     table(doc, ["Check", "Result"], [
-        ["Automated test suite", "154 tests passing, no API key required"],
+        ["Automated test suite", "155 tests passing, no API key required"],
         ["Lint", "ruff: all checks passed"],
         ["Bug-set validity", "All 19 bugs fail when injected and pass when fixed"],
         ["Framework restriction", "A test asserts only CrewAI and Google ADK are imported"],

@@ -4,16 +4,16 @@ Each level is compared against the `hierarchical / react / default / developer` 
 ## Prompt variant
 | Metric | react (baseline) | fewshot | react-reflect |
 |---|---|---|---|
-| Runs | 27 | 11 | 10 |
-| Resolved | 27/27 (100%) | 9/11 (82%) | 9/10 (90%) |
-| Right file(s) changed | 100% | 82% | 90% |
-| Matches reference exactly | 59% | 55% | 60% |
-| Edit similarity (0-1) | 0.91 | 0.77 | 0.81 |
-| Mean wall-clock | 65.6s | 54.0s | 101.3s |
-| Diagnoser time | 31.1s | 12.4s | 42.7s |
-| Mean LLM calls | 4.5 | 1.8 | 5.3 |
-| Mean tokens | 9604 | 5343 | 15528 |
-| Mean cost / run | $0.0238 | $0.0129 | $0.0398 |
+| Runs | 27 | 10 | 10 |
+| Resolved | 27/27 (100%) | 9/10 (90%) | 9/10 (90%) |
+| Right file(s) changed | 100% | 90% | 90% |
+| Matches reference exactly | 59% | 60% | 60% |
+| Edit similarity (0-1) | 0.91 | 0.84 | 0.81 |
+| Mean wall-clock | 65.6s | 59.4s | 101.3s |
+| Diagnoser time | 31.1s | 13.6s | 42.7s |
+| Mean LLM calls | 4.5 | 2.0 | 5.3 |
+| Mean tokens | 9604 | 5878 | 15528 |
+| Mean cost / run | $0.0238 | $0.0142 | $0.0398 |
 
 _Paired on 8 bugs: js01-slugify-global, js03-template-falsy, py01-subtotal-skips-last, py03-rounding-truncates, py05-region-case, py08-mutable-default, py09-snapshot-aliasing, py11-sku-dashes._
 
