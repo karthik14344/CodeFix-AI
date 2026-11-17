@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import re
 import statistics as st
 import subprocess
 import sys
@@ -192,15 +193,99 @@ def style_doc(doc: Document) -> None:
         h.paragraph_format.space_after = Pt(4)
 
 
+# --------------------------------------------------------------------------- code links
+#
+# A claim in the prose is written  [[visible text|key]] . It renders as a hyperlink to the code
+# that proves it, followed by a small grey "path:line" so the location is readable on paper too.
+# The target depends on the build:
+#   vscode  ->  vscode://file/<absolute path>:<line>:1   opens VS Code at the line (viva copy)
+#   github  ->  https://github.com/<repo>/blob/<commit>/<path>#L<line>   (submission copy)
+
+LINK_RE = re.compile(r"\[\[(.+?)\|([a-z0-9_]+)\]\]")
+LINKS = {"mode": "vscode", "sha": None, "used": {}}       # used: key -> (path, line)
+LINK_COLOR = RGBColor(0x1F, 0x5F, 0xB0)
+LOC_COLOR = RGBColor(0x80, 0x80, 0x80)
+
+
+def link_target(key: str) -> tuple[str, str, int]:
+    from code_refs import resolve
+
+    path, line = resolve(key, ROOT)
+    LINKS["used"][key] = (path, line)
+    if LINKS["mode"] == "github":
+        url = f"https://github.com/Abhiram12062005/AGAI/blob/{LINKS['sha']}/{path}#L{line}"
+    else:
+        url = f"vscode://file/{(ROOT / path).as_posix()}:{line}:1"
+    return url, path, line
+
+
+def add_hyperlink(paragraph, url: str, text: str, *, size: float, bold=False, italic=False,
+                  mono=False, color=LINK_COLOR, underline=True) -> None:
+    from docx.opc.constants import RELATIONSHIP_TYPE as RT
+
+    r_id = paragraph.part.relate_to(url, RT.HYPERLINK, is_external=True)
+    link = OxmlElement("w:hyperlink")
+    link.set(qn("r:id"), r_id)
+    run = OxmlElement("w:r")
+    rpr = OxmlElement("w:rPr")
+    if mono:
+        fonts = OxmlElement("w:rFonts")
+        for a in ("w:ascii", "w:hAnsi", "w:cs"):
+            fonts.set(qn(a), MONO)
+        rpr.append(fonts)
+    for flag, tag in ((bold, "w:b"), (italic, "w:i")):
+        if flag:
+            rpr.append(OxmlElement(tag))
+    c = OxmlElement("w:color")
+    c.set(qn("w:val"), f"{color[0]:02X}{color[1]:02X}{color[2]:02X}")
+    rpr.append(c)
+    if underline:
+        u = OxmlElement("w:u")
+        u.set(qn("w:val"), "single")
+        rpr.append(u)
+    sz = OxmlElement("w:sz")
+    sz.set(qn("w:val"), str(int(round(size * 2))))
+    rpr.append(sz)
+    run.append(rpr)
+    t = OxmlElement("w:t")
+    t.text = text
+    t.set(qn("xml:space"), "preserve")
+    run.append(t)
+    link.append(run)
+    paragraph._p.append(link)
+
+
+def emit(p, text: str, *, size: float, bold=False, italic=False, mono=False, color=None) -> None:
+    """Write `text` into paragraph `p`, turning [[text|key]] into a link to the code."""
+    pos = 0
+    for m in LINK_RE.finditer(text):
+        if m.start() > pos:
+            _plain(p, text[pos:m.start()], size=size, bold=bold, italic=italic, mono=mono,
+                   color=color)
+        url, path, line = link_target(m.group(2))
+        add_hyperlink(p, url, m.group(1), size=size, bold=bold, italic=italic, mono=mono)
+        add_hyperlink(p, url, f"  {path}:{line}", size=max(size - 3, 6.5), mono=True,
+                      color=LOC_COLOR, underline=False)
+        pos = m.end()
+    if pos < len(text):
+        _plain(p, text[pos:], size=size, bold=bold, italic=italic, mono=mono, color=color)
+
+
+def _plain(p, text, *, size, bold, italic, mono, color):
+    r = p.add_run(text)
+    r.bold, r.italic = bold, italic
+    r.font.size = Pt(size)
+    if mono:
+        r.font.name = MONO
+    if color is not None:
+        r.font.color.rgb = color
+
+
 def para(doc, text="", *, size=11, bold=False, italic=False, align=None, space_after=6,
          style=None, mono=False):
     p = doc.add_paragraph(style=style)
     if text:
-        r = p.add_run(text)
-        r.bold, r.italic = bold, italic
-        r.font.size = Pt(size)
-        if mono:
-            r.font.name = MONO
+        emit(p, text, size=size, bold=bold, italic=italic, mono=mono)
     if align is not None:
         p.alignment = align
     p.paragraph_format.space_after = Pt(space_after)
@@ -211,13 +296,9 @@ def rich(doc, parts, *, size=11, align=None, space_after=6):
     """parts: list of (text, {'b':bool,'i':bool,'mono':bool})"""
     p = doc.add_paragraph()
     for text, fmt in parts:
-        r = p.add_run(text)
-        r.bold = fmt.get("b", False)
-        r.italic = fmt.get("i", False)
-        r.font.size = Pt(size)
-        if fmt.get("mono"):
-            r.font.name = MONO
-            r.font.size = Pt(size - 1)
+        mono = fmt.get("mono", False)
+        emit(p, text, size=size - 1 if mono else size, bold=fmt.get("b", False),
+             italic=fmt.get("i", False), mono=mono)
     if align is not None:
         p.alignment = align
     p.paragraph_format.space_after = Pt(space_after)
@@ -229,13 +310,9 @@ def bullets(doc, items, *, size=11):
         parts = it if isinstance(it, list) else [(it, {})]
         p = doc.add_paragraph(style="List Bullet")
         for text, fmt in parts:
-            r = p.add_run(text)
-            r.bold = fmt.get("b", False)
-            r.italic = fmt.get("i", False)
-            r.font.size = Pt(size)
-            if fmt.get("mono"):
-                r.font.name = MONO
-                r.font.size = Pt(size - 1)
+            mono = fmt.get("mono", False)
+            emit(p, text, size=size - 1 if mono else size, bold=fmt.get("b", False),
+                 italic=fmt.get("i", False), mono=mono)
         p.paragraph_format.space_after = Pt(3)
 
 
@@ -266,9 +343,7 @@ def table(doc, headers, rows, *, widths=None, size=9.5, caption=None, header_fil
             bold = txt.startswith("**") and txt.endswith("**")
             if bold:
                 txt = txt[2:-2]
-            r = cells[i].paragraphs[0].add_run(txt)
-            r.font.size = Pt(size)
-            r.bold = bold
+            emit(cells[i].paragraphs[0], txt, size=size, bold=bold)
             cells[i].paragraphs[0].paragraph_format.space_after = Pt(2)
     if widths:
         for row in t.rows:
@@ -318,28 +393,68 @@ def to_pdf(docx_path: Path) -> Path | None:
     return pdf
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--pdf", action="store_true", help="also export a PDF via Word")
-    args = ap.parse_args()
+def code_index(doc) -> None:
+    """Appendix D: every code reference the report makes, in one clickable table."""
+    from code_refs import REFS
 
+    if not LINKS["used"]:
+        return
+    page_break(doc)
+    doc.add_heading("Appendix D  Code reference index", level=1)
+    where = ("Each entry opens the file in VS Code at the line shown." if LINKS["mode"] == "vscode"
+             else f"Each entry links to the line in the repository at commit "
+                  f"{(LINKS['sha'] or '')[:10]}.")
+    para(doc, "Every claim in this report that is linked to the code is listed here, in the "
+              f"order the code is organised. {where} Line numbers are resolved from the source "
+              "when the report is built, so they match the code it was built from.", size=10)
+    order = {k: i for i, k in enumerate(REFS)}
+    rows = [[f"[[{REFS[k][2]}|{k}]]"] for k in sorted(LINKS["used"], key=order.get)]
+    table(doc, ["Claim, and where it is in the code"], rows, widths=[6.3], size=9)
+
+
+def build_one(mode: str, out_name: str, pdf: bool) -> Path:
     from content import build  # noqa: PLC0415  (local module, after sys.path fix)
 
+    LINKS["mode"], LINKS["used"] = mode, {}
     rows = bench_rows()
     doc = Document()
     style_doc(doc)
     build(doc, rows=rows, stats=arch_stats(rows), facts=live_facts(),
           helpers=dict(para=para, rich=rich, bullets=bullets, table=table, figure=figure,
                        page_break=page_break, Counter=Counter, num=num))
+    code_index(doc)
     add_page_numbers(doc)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    docx = OUT_DIR / "CodeFix_AI_Final_Report.docx"
+    docx = OUT_DIR / f"{out_name}.docx"
     doc.save(docx)
-    print("wrote", docx)
-    if args.pdf:
-        pdf = to_pdf(docx)
-        if pdf:
-            print("wrote", pdf)
+    print(f"wrote {docx}  ({len(LINKS['used'])} code references, {mode} links)")
+    if pdf:
+        p = to_pdf(docx)
+        if p:
+            print("wrote", p)
+    return docx
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--pdf", action="store_true", help="also export a PDF via Word")
+    ap.add_argument("--links", choices=("both", "vscode", "github"), default="both",
+                    help="vscode: claims open VS Code at the line (viva copy, this machine only); "
+                         "github: claims open the line on GitHub (submission copy)")
+    args = ap.parse_args()
+
+    if args.links in ("both", "github"):
+        LINKS["sha"] = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True,
+                                      text=True).stdout.strip()
+        dirty = subprocess.run(["git", "status", "--porcelain", "--", "codefix", "mcp_server",
+                                "web", "config", "deploy", "tests", "benchmarks/bugset"],
+                               cwd=ROOT, capture_output=True, text=True).stdout.strip()
+        if dirty:
+            print("warning: code has uncommitted changes, so GitHub line numbers may not match "
+                  f"commit {LINKS['sha'][:10]}. Commit first for exact links.")
+        build_one("github", "CodeFix_AI_Final_Report", args.pdf)
+    if args.links in ("both", "vscode"):
+        build_one("vscode", "CodeFix_AI_Final_Report_VIVA", args.pdf)
 
 
 if __name__ == "__main__":

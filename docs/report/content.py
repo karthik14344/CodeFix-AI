@@ -118,12 +118,15 @@ def build(doc, *, rows, stats, facts, helpers):
          "explicit human decision.", align=J)
     para(doc,
          "The system is built on two agent frameworks that cooperate over an open protocol. "
-         "Google ADK runs the orchestration, the Manager and the ReAct Diagnoser; CrewAI runs "
-         "the Fixer, Reviewer, Tester and Pull-Request agents. The two sides never import each "
-         "other's code — they communicate using the Agent2Agent (A2A) protocol. Every tool "
-         f"the agents use is reached through a single Model Context Protocol (MCP) server with "
-         f"{facts['n_tools']} tools, so the sandbox, the secrets blocklist and the "
-         "pull-request guard cannot be bypassed by an agent in either framework.", align=J)
+         "Google ADK runs the orchestration, the [[Manager|manager]] and the "
+         "[[ReAct Diagnoser|diagnoser]]; CrewAI runs the [[Fixer|fixer]], Reviewer, "
+         "[[Tester|tester]] and [[Pull-Request|pr_prepare]] agents. The two sides never import "
+         "each other's code — they communicate using the "
+         "[[Agent2Agent (A2A) protocol|a2a_client]]. Every tool the agents use is reached "
+         "through a [[single Model Context Protocol (MCP) server|mcp_server]] with "
+         f"{facts['n_tools']} tools, so the [[sandbox|sandbox_clone]], the "
+         "[[secrets blocklist|blocklist]] and the [[pull-request guard|pr_confirm]] cannot be "
+         "bypassed by an agent in either framework.", align=J)
     rich(doc, [("The system described here is deployed and publicly reachable at ", {}),
                (URL, {"mono": True}), (". Source: ", {}), (REPO, {"mono": True}), (".", {})],
          align=J)
@@ -296,40 +299,51 @@ def build(doc, *, rows, stats, facts, helpers):
     table(doc, ["Req", "Requirement", "Traced to", "Agent / mechanism created"], [
         ["R1", "Localise a defect from natural language and an optional stack trace, using "
                "tools rather than a pre-computed alert", "LG1, PS1",
-         "Diagnoser — ADK LlmAgent running explicit ReAct over MCP tools"],
+         "[[Diagnoser|diagnoser]] — ADK LlmAgent running explicit ReAct over MCP tools"],
         ["R2", "Separate the agent that writes the patch from the agent that judges it",
-         "LG2, PS2", "Fixer (CrewAI) and an independent Tester (CrewAI) that runs the real "
-                     "suite in a fresh clone"],
+         "LG2, PS2", "[[Fixer|fixer]] (CrewAI) and an independent [[Tester|tester]] (CrewAI) "
+                     "that runs the real suite in a [[fresh clone|sandbox_clone]]"],
         ["R3", "Decide routing, retries and termination in one auditable place", "LG2, LG4",
-         "Manager — ADK custom agent with the attempt counter enforced in code"],
+         "[[Manager|manager]] — ADK custom agent with the "
+         "[[attempt counter enforced in code|attempt_bound]]"],
         ["R4", "Make the orchestration topology a variable, and measure it", "LG3",
-         "Three interchangeable architectures behind --arch: hierarchical, sequential, p2p"],
+         "[[Three interchangeable architectures behind --arch|arch_switch]]: hierarchical, "
+         "sequential, p2p"],
         ["R5", "On failure, retry the failed stage with the failure evidence attached, bounded",
-         "LG4, PS2", "Manager re-dispatches to the Fixer with the TestReport by reference; "
+         "LG4, PS2", "Manager re-dispatches to the Fixer with the "
+                     "[[TestReport by reference|dispatch_ref]]; "
                      f"max {facts['pipeline'].max_attempts} attempts, then a written escalation"],
         ["R6", "Share state through one inspectable store rather than ad-hoc message passing",
-         "LG6, PS4", "Blackboard — SQLite, typed Pydantic envelopes, append-only message log"],
+         "LG6, PS4", "[[Blackboard|blackboard]] — SQLite, [[typed Pydantic envelopes|envelope]], "
+                     "append-only message log"],
         ["R7", "Reach every tool through one standard, guarded boundary", "LG5, LG6",
-         f"MCP server with {facts['n_tools']} tools; sandbox, blocklist and timeouts live in "
-         "the server, so no agent in either framework can bypass them"],
+         f"[[MCP server|mcp_server]] with {facts['n_tools']} tools; sandbox, "
+         "[[blocklist|blocklist]] and timeouts live in the server, so no agent in either "
+         "framework can bypass them"],
         ["R8", "Let agents built on different frameworks cooperate over an open protocol", "LG5",
-         "A2A between the ADK and CrewAI sides — official a2a-sdk, public agent card, "
-         "bearer-token authentication"],
+         "A2A between the ADK and CrewAI sides — official a2a-sdk, "
+         "[[public agent card|a2a_card]], [[bearer-token authentication|a2a_auth]]"],
         ["R9", "Refuse unsafe input, unsafe tool output and unsafe patches at the boundaries",
-         "LG6", "Guardrails: input screening, per-agent tool allow-list, Pydantic tool-output "
-                "checks, patch-safety task guardrail"],
+         "LG6", "Guardrails: [[input screening|screen_input]], "
+                "[[per-agent tool allow-list|tool_allowlist]], "
+                "[[Pydantic tool-output checks|tool_output]], "
+                "[[patch-safety task guardrail|patch_safety]]"],
         ["R10", "Never write to a real repository without a human decision", "LG6, PS3",
          "Human-in-the-loop gate before the PR, enforced in the runner, the PR agent and the "
-         "MCP tool (confirmed=true, branch must be codefix/*)"],
+         "[[MCP tool (confirmed=true, branch must be codefix/*)|pr_confirm]]"],
         ["R11", "Make every run reconstructable after the fact", "LG6, PS4",
-         "Callbacks (ADK agent/model/tool hooks, CrewAI event bus) feeding a JSONL trace, "
-         "runs.db, Blackboard snapshots, A2A message ids and validated RAG citations"],
+         "Callbacks ([[ADK agent/model/tool hooks|adk_callbacks]], "
+         "[[CrewAI callbacks|crew_callbacks]]) feeding a JSONL trace, runs.db, "
+         "[[Blackboard snapshots|snapshot]], A2A message ids and "
+         "[[validated RAG citations|citations]]"],
         ["R12", "Evaluate on more than resolve rate, over repeated runs", "LG7, PS2",
-         "codefix bench: objective re-test in a fresh clone, reference-fix comparison and "
-         "LLM-as-judge with agreement scoring; cost, wall-clock, per-agent latency and "
-         "standard deviation"],
+         "[[codefix bench|run_bench]]: [[objective re-test in a fresh clone|objective_check]], "
+         "[[reference-fix comparison|reference_compare]] and "
+         "[[LLM-as-judge|judge_run]] with agreement scoring; cost, wall-clock, per-agent "
+         "latency and standard deviation"],
         ["R13", "Be deployable and reachable by someone who is not us", "LG8",
-         "Container on Google Cloud Run; A2A agent card published at a public URL"],
+         "[[Container on Google Cloud Run|deploy_cpu]]; A2A agent card published at a "
+         "public URL"],
     ], widths=[0.45, 2.2, 0.85, 2.8], size=8.5,
         caption="Table 4.1  Requirements traced to literature gaps and problem-statement claims.")
     page_break(doc)
@@ -347,17 +361,17 @@ def build(doc, *, rows, stats, facts, helpers):
          "Reviewer implements the Reflection pattern and is enabled by the react-reflect "
          "prompt variant.", align=J)
     table(doc, ["Agent", "Framework", "Role", "Model", "Output"], [
-        ["Manager", "Google ADK (custom agent)", "Routing and state evaluation; each decision is "
+        ["[[Manager|manager]]", "Google ADK (custom agent)", "Routing and state evaluation; each decision is "
          "a one-shot LlmAgent call", facts["roles"]["manager"].model,
          "DispatchRef, Escalation"],
-        ["Diagnoser", "Google ADK (LlmAgent + MCP tools)", "Explicit ReAct over report, trace "
+        ["[[Diagnoser|diagnoser]]", "Google ADK (LlmAgent + MCP tools)", "Explicit ReAct over report, trace "
          "and repository", facts["roles"]["diagnoser"].model, "Diagnosis"],
-        ["Fixer (+ Reviewer)", "CrewAI (Agent + guardrailed Task)",
+        ["[[Fixer|fixer]] (+ Reviewer)", "CrewAI (Agent + guardrailed Task)",
          "Patch generation; optional Reflection reviewer", facts["roles"]["fixer"].model,
          "Patch (unified diff + rationale)"],
-        ["Tester", "CrewAI (Flow step)", "Isolated apply → lint → test suite",
+        ["[[Tester|tester]]", "CrewAI (Flow step)", "Isolated apply → lint → test suite",
          "none (deterministic)", "TestReport"],
-        ["PR agent", "CrewAI (Flow step)", "Branch and commit; push only after human approval",
+        ["[[PR agent|pr_prepare]]", "CrewAI (Flow step)", "Branch and commit; push only after human approval",
          "none (deterministic)", "PRResult"],
     ], widths=[1.0, 1.4, 1.9, 1.0, 1.0], size=8.5,
         caption="Table 5.1  The five agents, their frameworks and their responsibilities.")
@@ -367,23 +381,24 @@ def build(doc, *, rows, stats, facts, helpers):
            "Figure 5.1  Hierarchical architecture (the default). The Manager is the only "
            "component that decides what happens next; every hop is Manager ⇄ worker.")
     para(doc,
-         "The chosen architecture is hierarchical (manager–worker). The Manager receives the "
-         "bug report after input screening, dispatches the Diagnoser, then the Fixer, then the "
+         "The chosen architecture is hierarchical (manager–worker). The [[Manager|manager]] "
+         "receives the bug report after [[input screening|screen_input_call]], dispatches the Diagnoser, then the Fixer, then the "
          "Tester. On a passing test report it dispatches the PR agent and stops at the human "
-         "gate. On a failing report it re-dispatches the Fixer with the TestReport attached by "
-         "reference, at most max_attempts times, after which it escalates with a written "
-         "summary of everything tried. The bound is enforced in code: the Manager checks the "
-         "attempt counter before consulting its model, and the model may only choose among the "
+         "gate. On a failing report it re-dispatches the Fixer with the TestReport "
+         "[[attached by reference|dispatch_ref]], at most max_attempts times, after which it escalates with a written "
+         "summary of everything tried. [[The bound is enforced in code|attempt_bound]]: the "
+         "Manager checks the attempt counter before consulting its model, and the model may only choose among the "
          "legal transitions; an invalid or failed answer falls back to the deterministic policy.",
          align=J)
-    para(doc, "Two alternative topologies are implemented behind the same switch:", align=J)
+    para(doc, "Two alternative topologies are implemented behind "
+              "[[the same switch|arch_switch]]:", align=J)
     bullets(doc, [
         [("Sequential", {"b": True}),
-         (" — an ADK LoopAgent wrapping diagnose → fix → test → gate. Any "
+         (" — an [[ADK LoopAgent|loop_agent]] wrapping diagnose → fix → test → gate. Any "
           "failure restarts the whole attempt from diagnosis, carrying nothing over.", {})],
         [("Peer-to-peer", {"b": True}),
          (" — the ADK Diagnoser hands its Diagnosis inline over A2A to a CrewAI "
-          "PeerRepairFlow, where Fixer and Tester pass the patch and the full TestReport "
+          "[[PeerRepairFlow|p2p_flow]], where Fixer and Tester pass the patch and the full TestReport "
           "directly to each other under a fixed local rule. No Manager, no Blackboard reads.", {})],
     ])
     figure(doc, DOCS / "graph_sequential.png", "Figure 5.2  Sequential architecture.", width=5.6)
@@ -411,13 +426,16 @@ def build(doc, *, rows, stats, facts, helpers):
 
     doc.add_heading("5.4  State management: the Blackboard", level=2)
     para(doc,
-         "A SQLite-backed Blackboard keyed by task_id is the single source of truth: the bug "
+         "A SQLite-backed [[Blackboard|blackboard]] keyed by task_id is the single source of "
+         "truth: the bug "
          "report, the current Diagnosis, the active Patch, the latest TestReport, the attempt "
          "counter, escalation and PR results, and an append-only message log. In hierarchical "
-         "mode agents read and write only through it. Because it holds the complete state, a "
-         "run paused at the human gate resumes directly from it with no framework checkpoint.",
+         "mode agents read and write only through it. Because it "
+         "[[holds the complete state|snapshot]], a run paused at the human gate resumes "
+         "directly from it with no framework checkpoint.",
          align=J)
-    para(doc, "Every inter-agent exchange is a typed, validated Pydantic envelope:", align=J)
+    para(doc, "Every inter-agent exchange is a [[typed, validated Pydantic envelope|envelope]]:",
+         align=J)
     para(doc,
          "class Envelope(BaseModel):\n"
          "    task_id: str\n"
@@ -430,8 +448,9 @@ def build(doc, *, rows, stats, facts, helpers):
          "    latency_ms: int | None",
          size=8.5, mono=True, space_after=8)
     para(doc,
-         "Message size is bounded by design. A Manager dispatch references prior artifacts by "
-         "task_id and artifact id, never by re-sending their content, and the A2A message "
+         "Message size is bounded by design. A Manager dispatch "
+         "[[references prior artifacts by task_id and artifact id|dispatch_ref]], never by "
+         "re-sending their content, and the A2A message "
          "carries exactly that reference set. A third-attempt dispatch is therefore the same "
          "size as the first, whereas the peer-to-peer hand-off carries the full TestReport "
          "inline. Section 7 measures this as mean envelope size.", align=J)
@@ -441,12 +460,14 @@ def build(doc, *, rows, stats, facts, helpers):
            f"Figure 5.4  All {facts['n_tools']} tools are reached through one MCP server. "
            "Safety lives in the server, so no agent in either framework can bypass it.")
     para(doc,
-         "The Diagnoser reaches tools as native ADK tools whose declarations are the server's "
-         f"own JSON schemas; it is restricted to {len(facts['diag_tools'])} read-only tools "
+         "The Diagnoser reaches tools as [[native ADK tools|mcp_to_adk]] whose declarations are "
+         "the server's own JSON schemas; it is "
+         f"[[restricted to {len(facts['diag_tools'])} read-only tools|diagnoser_tools]] "
          "(code search, file reading, tree listing, stack-trace parsing, RAG retrieval and "
          "static analysis). The CrewAI workers use the workspace, patch, test and git tools. "
-         "The path sandbox, the secrets blocklist, subprocess timeouts and the pull-request "
-         "confirmation guard are implemented in the server rather than in any agent.", align=J)
+         "The [[path sandbox|path_jail]], the [[secrets blocklist|blocklist]], subprocess "
+         "timeouts and the [[pull-request confirmation guard|pr_confirm]] are implemented in "
+         "the server rather than in any agent.", align=J)
 
     doc.add_heading("5.6  Messaging pattern and A2A communication", level=2)
     figure(doc, DOCS / "graph_messaging.png",
@@ -455,63 +476,67 @@ def build(doc, *, rows, stats, facts, helpers):
     para(doc,
          "Two distinct mechanisms are used deliberately. Within the ADK side, agents coordinate "
          "through the shared Blackboard — a blackboard architecture. Across the framework "
-         "boundary, the ADK side is an A2A client and the CrewAI workers are published as an "
-         f"A2A agent with the skills {', '.join(facts['a2a_skills'])} and an agent card at "
+         "boundary, the ADK side is an [[A2A client|a2a_client]] and the CrewAI workers are "
+         f"published as an [[A2A agent with the skills {', '.join(facts['a2a_skills'])}|a2a_card]] "
+         "and an agent card at "
          "/.well-known/agent-card.json. Each request is one A2A message carrying a single data "
          "part; the reply carries result ids, not payloads.", align=J)
     para(doc,
          "In the deployed service the CrewAI agent is mounted at /a2a/crew/ and is a separately "
          "addressable A2A service. Discovery is deliberately public so the agent card can be "
-         "read by anyone, while every message/send requires a bearer token — without it a "
+         "read by anyone, while every message/send "
+         "[[requires a bearer token|a2a_auth]] — without it a "
          "public URL would let a stranger drive the worker agents and spend the API key.", align=J)
 
     doc.add_heading("5.7  Securing the system: guardrails, safeguards and callbacks", level=2)
     table(doc, ["Boundary", "Guardrail", "Mechanism"], [
         ["User input", "Prompt-injection patterns, abusive language, empty or oversized reports",
-         "screen_user_input before any agent runs; a blocked run ends with outcome 'blocked' "
+         "[[screen_user_input|screen_input]] before any agent runs; a blocked run ends with "
+         "outcome 'blocked' "
          "and no model is ever called"],
         ["Tool use", "Per-agent tool allow-list and argument shape check",
-         "ADK before_tool_callback"],
+         "[[ADK before_tool_callback|tool_allowlist]]"],
         ["Tool output", "Type check against the Pydantic schema for that tool; repository text "
-         "that addresses the model is wrapped as untrusted data", "ADK after_tool_callback"],
+         "that addresses the model is [[wrapped as untrusted data|untrusted]]", "[[ADK after_tool_callback|tool_output]]"],
         ["Agent output", "The patch must apply, must not touch tests, and must not add shell "
          "execution, eval, file deletion, network access or secret access",
-         "CrewAI Task guardrail, retried once with the reason fed back"],
-        ["Repository", "Never mutated: every attempt runs in its own git clone; paths outside "
-         "the repository are refused; .env, keys and CI secrets are blocklisted", "MCP server"],
+         "[[CrewAI Task guardrail|patch_safety]], retried once with the reason fed back"],
+        ["Repository", "Never mutated: every attempt runs in its own "
+         "[[git clone|sandbox_clone]]; [[paths outside the repository are refused|path_jail]]; "
+         "[[.env, keys and CI secrets are blocklisted|blocklist]]", "MCP server"],
         ["Pull request", "Only after explicit human confirmation, only on a codefix/<task_id> "
          "branch, never the default branch",
-         "Enforced in the runner, the PR agent and the MCP tool"],
+         "Enforced in the runner, the PR agent and [[the MCP tool|pr_confirm]]"],
         ["A2A endpoint", "Shared-secret bearer token on the deployed service; discovery stays "
-         "public", "ASGI middleware on the JSON-RPC route"],
+         "public", "[[ASGI middleware on the JSON-RPC route|a2a_auth]]"],
     ], widths=[1.0, 2.3, 3.0], size=8.5,
         caption="Table 5.3  Guardrails at seven boundaries. Every decision is recorded as a "
                 "GuardrailResult and a trace event.")
     para(doc,
-         "Monitoring uses the frameworks' own callback mechanisms rather than wrappers: ADK "
-         "before/after agent, model and tool callbacks plus on_tool_error, and the CrewAI "
-         "event bus together with step and task callbacks. Each hook writes a callback event "
+         "Monitoring uses the frameworks' own callback mechanisms rather than wrappers: "
+         "[[ADK before/after agent, model and tool callbacks plus on_tool_error|adk_callbacks]], "
+         "and the CrewAI event bus together with [[step and task callbacks|crew_callbacks]]. Each hook writes a callback event "
          "recording framework, hook, agent and latency.", align=J)
 
     doc.add_heading("5.8  Validation strategy", level=2)
     para(doc, "Every patch is graded three ways, two of which are independent of any model:",
          align=J)
     bullets(doc, [
-        [("Objective re-test", {"b": True}),
+        [("[[Objective re-test|objective_check]]", {"b": True}),
          (" — the final diff is applied to a fresh clone and the previously-failing test "
           "plus the full suite are run again, independently of the Tester agent.", {})],
-        [("Reference-text comparison", {"b": True}),
+        [("[[Reference-text comparison|reference_compare]]", {"b": True}),
          (" — the patched files are compared against the known-good fix: exact match "
           "(modulo whitespace), similarity between the agent's edit text and the reference "
           "edit text, and whether exactly the reference file set was changed.", {})],
-        [("LLM-as-judge", {"b": True}),
+        [("[[LLM-as-judge|judge_run]]", {"b": True}),
          (" — a judge model sees the report, the source and the diff but not the test "
           "results, and returns a verdict with reasoning and a score. Because it cannot see the "
           "tests, judge-versus-tests agreement is a measurement of the judge.", {})],
     ])
     para(doc,
-         "The judge model must differ from both generating models; this is enforced when the "
-         "configuration is loaded. On the deployment used here the provider serves only two "
+         "The judge model must differ from both generating models; this is "
+         "[[enforced when the configuration is loaded|judge_independent]]. On the deployment used here the provider serves only two "
          "distinct models, which forces the judge onto the model the generators do not use — "
          "exactly the independence the method requires.", align=J)
 
@@ -524,8 +549,8 @@ def build(doc, *, rows, stats, facts, helpers):
          "CrewAI A2A service mounted at /a2a/crew/ and the MCP tool server as a stdio "
          "subprocess, with the RAG embedding model baked in so no download occurs on a cold "
          "start. The API key and the A2A token are held in Secret Manager and mounted as "
-         "environment variables; neither is baked into the image. The service runs with CPU "
-         "always allocated, which is a correctness requirement rather than a tuning choice: a "
+         "environment variables; neither is baked into the image. The service runs with "
+         "[[CPU always allocated|deploy_cpu]], which is a correctness requirement rather than a tuning choice: a "
          "run is started by an HTTP request that returns immediately and continues on a "
          "background thread, and Cloud Run's default would starve that thread the moment the "
          "response was sent.", align=J)
@@ -536,25 +561,26 @@ def build(doc, *, rows, stats, facts, helpers):
     table(doc, ["Layer", "Technology", "Why"], [
         ["Agent frameworks", "Google ADK 2.12 (orchestration, Manager, Diagnoser) · "
          "CrewAI 1.15 (Fixer, Reviewer, Tester, PR)",
-         "The two frameworks permitted by the course. A test asserts that no other agent "
-         "framework is imported anywhere in the codebase."],
-        ["Agent-to-agent", "a2a-sdk 1.2.3 (JSON-RPC binding, agent card)",
+         "The two frameworks permitted by the course. "
+         "[[A test asserts that no other agent framework is imported|frameworks_test]] "
+         "anywhere in the codebase."],
+        ["Agent-to-agent", "a2a-sdk 1.2.3 (JSON-RPC binding, [[agent card|a2a_card]])",
          "Open protocol so the two frameworks interoperate without importing each other"],
-        ["Tooling protocol", f"MCP (FastMCP) over stdio — {facts['n_tools']} tools",
+        ["Tooling protocol", f"[[MCP (FastMCP) over stdio|mcp_server]] — {facts['n_tools']} tools",
          "One guarded boundary for every tool call from either framework"],
-        ["Models", f"Z.AI GLM — {facts['roles']['diagnoser'].model} (Diagnoser, Fixer), "
+        ["Models", f"[[Z.AI GLM|zai]] — {facts['roles']['diagnoser'].model} (Diagnoser, Fixer), "
                    f"{facts['roles']['manager'].model} (Manager, Judge)",
-         "Task–model fit: the heaviest reasoning gets the flagship, routing and judging "
-         "get the cheap model"],
+         "[[Task–model fit|models_yaml]]: the heaviest reasoning gets the flagship, routing "
+         "and judging get the cheap model"],
         ["Structured output", "Pydantic 2.12",
-         "Every agent output and every message is a validated model; invalid output gets one "
-         "repair turn"],
-        ["State", "SQLite (Blackboard: runs, messages, llm_calls, tool_calls, evaluations, "
+         "Every agent output and [[every message is a validated model|envelope]]; invalid "
+         "output gets one repair turn"],
+        ["State", "SQLite ([[Blackboard|blackboard]]: runs, messages, llm_calls, tool_calls, evaluations, "
                   "artifacts)",
          "Single inspectable source of truth; no extra service to deploy"],
         ["Retrieval", "ChromaDB 1.5 + sentence-transformers all-MiniLM-L6-v2",
-         "Code, past-fix and documentation collections with citations validated against "
-         "retrieved ids"],
+         "Code, past-fix and documentation collections with "
+         "[[citations validated against retrieved ids|citations]]"],
         ["Static analysis / tests", "ruff 0.17, ESLint; pytest 9.1, jest, node:test",
          "The project's own suite is the success criterion"],
         ["Backend / API", "FastAPI 0.141 + Uvicorn 0.54", "Async web app and SSE trace stream"],
@@ -590,8 +616,8 @@ def _results(doc, helpers, rows, stats, facts, archs, total_runs, total_cost):
          "own MLOps-Incident-Diagnosis project, carried over with its module and test file "
          "unmodified. Each bug is a realistic logic error: an off-by-one in a subtotal, a "
          "case-sensitivity bug in region lookup, a mutable default argument, a list sliced from "
-         "the wrong end. A separate check proves every one of the 19 fails when injected and "
-         "passes when fixed, so a resolved run cannot be an artefact of a broken test.", align=J)
+         "the wrong end. [[A separate check proves every one of the 19 fails when injected and "
+         "passes when fixed|verify_bugset]], so a resolved run cannot be an artefact of a broken test.", align=J)
     para(doc,
          "Including alertsink is deliberate. A bug set written entirely for the benchmark "
          "invites the objection that the agents are being graded on code shaped to suit them; "
@@ -599,9 +625,9 @@ def _results(doc, helpers, rows, stats, facts, archs, total_runs, total_cost):
          "mind. It is included because it depends only on the standard library, whereas the "
          "rest of that project requires MLflow, scikit-learn and a live Flask app.", align=J)
     para(doc,
-         "The defect is never stored in the repository. Each run copies the pristine repository, "
-         "applies the injection, and commits the broken state as the single commit of a fresh "
-         "git history. The agents therefore receive a repository with one defect, no clue in the "
+         "The defect is never stored in the repository. [[Each run copies the pristine "
+         "repository, applies the injection, and commits the broken state as the single commit "
+         "of a fresh git history|materialize]]. The agents therefore receive a repository with one defect, no clue in the "
          "git log, and a bug report that describes only symptoms — no file or function is "
          "named. Reversing the injection yields the known-good fix used for reference scoring.",
          align=J)
@@ -684,8 +710,8 @@ def _results(doc, helpers, rows, stats, facts, archs, total_runs, total_cost):
     para(doc,
          "The system works as intended. In the architecture experiment the agents resolved "
          f"all {arch_res} of {total_runs} completed runs, in every architecture, where "
-         "“resolved” means the final patch was re-applied to a clean clone and the "
-         "entire suite passed — not that an agent said so. One further run was still in "
+         "“resolved” means [[the final patch was re-applied to a clean clone and the "
+         "entire suite passed|objective_check]] — not that an agent said so. One further run was still in "
          "flight when the benchmark process was stopped; it has no outcome, no judge verdict "
          "and no re-test, so it is excluded rather than counted as a failure.", align=J)
     study = facts["study"]
@@ -759,7 +785,7 @@ def _results(doc, helpers, rows, stats, facts, archs, total_runs, total_cost):
     para(doc,
          "The retry loop was, however, exercised once in a live run, in the prompt-variant "
          "sweep rather than here. On py09-snapshot-aliasing under ReAct+Reflection, the first "
-         "patch failed the test suite. The Manager's recorded decision reads: “The failure "
+         "patch failed the test suite. [[The Manager's recorded decision|attempt_bound]] reads: “The failure "
          "is a trivial SyntaxError (two statements on one line) introduced by the Fixer's own "
          "edit in inventory.py; retrying with the failure log.” It sent back only the Fixer, "
          "with the TestReport attached by reference, and did not re-run the Diagnoser; the "
@@ -850,10 +876,10 @@ def _results(doc, helpers, rows, stats, facts, archs, total_runs, total_cost):
     para(doc,
          "Cached input accounts for more than half of all prompt tokens, because the Diagnoser's "
          "system prompt and tool declarations are stable across ReAct steps. Accounting for "
-         "this correctly matters: charging cached tokens at the full input rate overstated the "
-         "measured cost of this experiment by a third.", align=J)
+         "this correctly matters: [[charging cached tokens at the full input rate|cached_tokens]] "
+         "overstated the measured cost of this experiment by a third.", align=J)
     para(doc,
-         "A counterfactual over the same token volume shows that running every agent on the "
+         "[[A counterfactual over the same token volume|cost_estimate]] shows that running every agent on the "
          "flagship model would have cost essentially what the per-role mix cost, because the "
          "Diagnoser and Fixer dominate token volume and already use it; running everything on "
          "the cheap model would cost about a tenth, at a quality that this experiment does not "
@@ -903,13 +929,13 @@ def _results(doc, helpers, rows, stats, facts, archs, total_runs, total_cost):
     para(doc,
          "That verdict was wrong, and the cause was the harness. On the Windows host, git "
          "checks the pristine repositories out with CRLF line endings; building a bug "
-         "repository copied every file verbatim but rewrote the injected file with LF. "
+         "repository [[copied every file verbatim but rewrote the injected file with LF|eol_fix]]. "
          "inventory.py was therefore committed as CRLF, and an LF patch touching it failed "
          "git's strict context match. The Tester's apply tool already retries tolerant of "
          "line-ending drift, which is why it succeeded; the grader did not. These were the only "
          "two patches in the study that edited a file other than the injected one, which is why "
          "no other run was affected. After normalising line endings when bug repositories are "
-         "built, and giving the grader the same fallback as the Tester, both patches apply to a "
+         "built, and [[giving the grader the same fallback as the Tester|grader_apply]], both patches apply to a "
          "clean clone and pass all 46 tests, and both match the reference edit exactly in "
          "catalog.py.", align=J)
     para(doc,
@@ -958,7 +984,8 @@ def _results(doc, helpers, rows, stats, facts, archs, total_runs, total_cost):
                     "enduser arm receives no stack trace at all.")
     para(doc,
          "The reporter persona is the most consequential of the three sweeps and produced the "
-         "most surprising result. The enduser arm withholds the failing test output entirely, "
+         "most surprising result. [[The enduser arm withholds the failing test output "
+         "entirely|reporters]], "
          "leaving the Diagnoser nothing but a symptom description — and it still resolved "
          "every run, changed the right file every time, and scored slightly higher on edit "
          "similarity while costing less. Localisation did not depend on the stack trace.",
@@ -973,7 +1000,8 @@ def _results(doc, helpers, rows, stats, facts, archs, total_runs, total_cost):
 
     doc.add_heading("7.9  Working on code the system was not designed around", level=2)
     para(doc,
-         "The three alertsink defects test the system on pre-existing production code from a "
+         "[[The three alertsink defects|bug_ml01]] test the system on pre-existing production "
+         "code from a "
          "different project of the team's, with the module and its test unmodified. All three "
          "were resolved on the first attempt, each patch matching the reference fix exactly, "
          "at a mean of 58 seconds and $0.023 per run — indistinguishable from the "
@@ -1169,10 +1197,10 @@ def _team_and_conclusions(doc, helpers, stats, total_runs, total_cost, facts):
     table(doc, ["Check", "Result"], [
         ["Automated test suite", "155 tests passing, no API key required"],
         ["Lint", "ruff: all checks passed"],
-        ["Bug-set validity", "All 19 bugs fail when injected and pass when fixed"],
-        ["Framework restriction", "A test asserts only CrewAI and Google ADK are imported"],
-        ["Judge independence", "Enforced at configuration load: the judge model must differ "
-                               "from both generating models"],
+        ["Bug-set validity", "[[All 19 bugs fail when injected and pass when fixed|verify_bugset]]"],
+        ["Framework restriction", "[[A test asserts only CrewAI and Google ADK are imported|frameworks_test]]"],
+        ["Judge independence", "[[Enforced at configuration load|judge_independent]]: the "
+                               "judge model must differ from both generating models"],
         ["Deployment", "Verified live: a Python bug resolved end to end with 46/46 tests green "
-                       "in-container, 6 A2A messages and the human gate holding"],
+                       "in-container, 6 A2A messages and [[the human gate holding|pr_confirm]]"],
     ], widths=[1.9, 4.4], size=9)

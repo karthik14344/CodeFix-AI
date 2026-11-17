@@ -17,3 +17,6 @@ bench_*.log
 bench_prompts.err
 .claudedeploy_out.log
 deploy_err.log
+
+# Office lock files
+~$*
