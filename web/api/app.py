@@ -92,6 +92,7 @@ def get_config():
         "provider": s.provider,
         "variants": list(prompts.VARIANTS),
         "personas": list(prompts.PERSONAS),
+        "reporters": list(_reporters()),
         "has_api_key": _has_key(),
         "bugs": [{"id": b.id, "repo": b.repo, "difficulty": b.difficulty, "report": b.report} for b in load_bugs()],
     }
@@ -147,21 +148,42 @@ def start_run(req: RunRequest):
     return {"task_id": task_id}
 
 
+def _reporters() -> tuple[str, ...]:
+    from codefix.eval.bench import REPORTERS
+
+    return tuple(REPORTERS)
+
+
+# Prompt variant, agent persona and reporter persona live in runs.meta (JSON). A run made before a
+# dimension existed has no key for it, and it ran with that dimension's default - so the default
+# is filled in here rather than the run disappearing from a filtered view. Same defaults as the
+# benchmark export (codefix/eval/bench.py).
+_META_COLS = {
+    "variant": "COALESCE(json_extract(r.meta, '$.variant'), 'react')",
+    "persona": "COALESCE(json_extract(r.meta, '$.persona'), 'default')",
+    "reporter": "COALESCE(json_extract(r.meta, '$.reporter'), 'developer')",
+}
+
+
 @app.get("/api/runs")
 def list_runs(outcome: str | None = None, arch: str | None = None, llm_mode: str | None = None,
-              bench_id: str | None = None, limit: int = 300):
+              bench_id: str | None = None, variant: str | None = None, persona: str | None = None,
+              reporter: str | None = None, limit: int = 500):
     bb = runner.blackboard()
     q = ("SELECT r.task_id, r.created_at, r.arch, r.llm_mode, r.status, r.outcome, r.failure_stage, r.attempts,"
          " r.max_attempts, r.duration_ms, r.cost_usd, r.bug_id, r.bench_id, substr(r.bug_report,1,140) AS bug_report,"
+         + "".join(f" {expr} AS {name}," for name, expr in _META_COLS.items()) +
          " e.verdict AS judge_verdict, e.objective_pass FROM runs r LEFT JOIN evaluations e ON e.task_id=r.task_id"
          " WHERE 1=1")
     args: list = []
-    for col, val in (("r.outcome", outcome), ("r.arch", arch), ("r.llm_mode", llm_mode), ("r.bench_id", bench_id)):
+    for col, val in (("r.outcome", outcome), ("r.arch", arch), ("r.llm_mode", llm_mode), ("r.bench_id", bench_id),
+                     (_META_COLS["variant"], variant), (_META_COLS["persona"], persona),
+                     (_META_COLS["reporter"], reporter)):
         if val:
             if col == "r.outcome" and val == "running":
                 q += " AND r.status='running'"
                 continue
-            q += f" AND {col}=?"
+            q += f" AND {col}=?"           # col is from a fixed whitelist; the value is a bound param
             args.append(val)
     q += " ORDER BY r.created_at DESC LIMIT ?"
     args.append(limit)

@@ -15,11 +15,15 @@
     <select id="arch"><option value="">All architectures</option><option>hierarchical</option><option>sequential</option><option>p2p</option></select>
     <select id="llm"><option value="">Live + mock</option><option value="live">live only</option><option value="mock">mock only</option></select>
     <select id="bench"><option value="">All (incl. ad-hoc)</option></select>
+    <select id="variant" title="Prompt variant"><option value="">All prompts</option></select>
+    <select id="persona" title="Agent persona"><option value="">All agent personas</option></select>
+    <select id="reporter" title="Who filed the bug report"><option value="">All reporters</option></select>
+    <button class="btn ghost" id="reset" type="button">Reset</button>
     <span class="muted" id="count"></span>
   </div>
   <div class="card" style="overflow:auto">
     <table>
-      <thead><tr><th>Started</th><th>Task</th><th>Arch</th><th>Outcome</th><th class="num">Attempts</th><th>Stage</th><th class="num">Time</th><th class="num">Cost</th><th>Judge</th><th>Bug</th></tr></thead>
+      <thead><tr><th>Started</th><th>Task</th><th>Arch</th><th>Prompt · persona</th><th>Outcome</th><th class="num">Attempts</th><th>Stage</th><th class="num">Time</th><th class="num">Cost</th><th>Judge</th><th>Bug</th></tr></thead>
       <tbody id="rows"></tbody>
     </table>
   </div>
@@ -28,7 +32,8 @@
 <script>
 initChrome('runs');
 const params = new URLSearchParams(location.search);
-for (const k of ['outcome', 'arch', 'llm', 'bench']) if (params.get(k)) $('#' + k).dataset.init = params.get(k);
+const FILTERS = ['outcome', 'arch', 'llm', 'bench', 'variant', 'persona', 'reporter'];
+for (const k of FILTERS) if (params.get(k)) $('#' + k).dataset.init = params.get(k);
 
 async function load() {
   const q = new URLSearchParams();
@@ -36,18 +41,35 @@ async function load() {
   if ($('#arch').value) q.set('arch', $('#arch').value);
   if ($('#llm').value) q.set('llm_mode', $('#llm').value);
   if ($('#bench').value) q.set('bench_id', $('#bench').value);
+  for (const k of ['variant', 'persona', 'reporter']) if ($('#' + k).value) q.set(k, $('#' + k).value);
+  // keep the filters in the address bar, so a filtered view can be bookmarked or shared
+  const shown = new URLSearchParams();
+  for (const k of FILTERS) if ($('#' + k).value) shown.set(k, $('#' + k).value);
+  history.replaceState(null, '', shown.toString() ? `?${shown}` : location.pathname);
   const rows = await api('/api/runs?' + q);
   $('#count').textContent = `${rows.length} runs`;
   $('#rows').innerHTML = rows.map(r => `
     <tr class="click" onclick="location.href='/run.html?id=${encodeURIComponent(r.task_id)}'">
       <td class="muted">${esc(fmtTime(r.created_at))}</td><td class="mono">${esc(r.task_id)}${r.llm_mode === 'mock' ? ' <span class="chip">mock</span>' : ''}</td>
-      <td>${archChip(r.arch)}</td><td>${outcomeChip(r)}</td><td class="num">${r.attempts}/${r.max_attempts}</td>
+      <td>${archChip(r.arch)}</td><td>${configCell(r)}</td><td>${outcomeChip(r)}</td><td class="num">${r.attempts}/${r.max_attempts}</td>
       <td class="muted">${esc(r.failure_stage || '')}</td><td class="num">${fmtMs(r.duration_ms)}</td><td class="num">${fmtUsd(r.cost_usd)}</td>
-      <td>${r.judge_verdict ? esc(r.judge_verdict) + (r.objective_pass == null ? '' : r.objective_pass ? ' · ✔ tests' : ' · ✖ tests') : '<span class="muted">–</span>'}</td>
+      <td class="nowrap">${r.judge_verdict ? esc(r.judge_verdict) + (r.objective_pass == null ? '' : r.objective_pass ? ' · ✔ tests' : ' · ✖ tests') : '<span class="muted">–</span>'}</td>
       <td>${r.bug_id ? `<span class="mono">${esc(r.bug_id)}</span>` : esc(r.bug_report)}</td></tr>`).join('')
-    || '<tr><td colspan="10" class="empty">No runs match these filters</td></tr>';
+    || '<tr><td colspan="11" class="empty">No runs match these filters</td></tr>';
 }
+// Prompt and persona for one run. Defaults are shown muted so the non-default ones stand out.
+function configCell(r) {
+  const v = r.variant || 'react', p = r.persona || 'default', u = r.reporter || 'developer';
+  const part = (val, dflt) => val === dflt ? `<span class="muted">${esc(val)}</span>` : `<b>${esc(val)}</b>`;
+  return `${part(v, 'react')} · ${part(p, 'default')}` +
+    (u !== 'developer' ? ` <span class="chip" title="bug reported by an end user: no stack trace">${esc(u)}</span>` : '');
+}
+
 (async () => {
+  const cfg = await api('/api/config');
+  const fill = (id, values) => values.forEach(v => $('#' + id).insertAdjacentHTML('beforeend', `<option>${esc(v)}</option>`));
+  fill('variant', cfg.variants || []); fill('persona', cfg.personas || []); fill('reporter', cfg.reporters || []);
+  $('#reset').onclick = () => { FILTERS.forEach(k => $('#' + k).value = ''); load(); };
   const d = await api('/api/dashboard?llm_mode=all');
   for (const b of d.benches) $('#bench').insertAdjacentHTML('beforeend', `<option value="${esc(b.bench_id)}">${esc(b.bench_id)} (${b.n})</option>`);
   $$('select').forEach(s => { if (s.dataset.init) s.value = s.dataset.init; s.onchange = load; });

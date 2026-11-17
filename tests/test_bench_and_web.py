@@ -102,3 +102,34 @@ def test_web_api_flow():
     assert row["llm_mode"] == "mock"
     assert "objective_pass" in row
     assert any(r["task_id"] == tid for r in c.get("/api/runs").json())
+
+
+def test_runs_api_filters_by_prompt_variant_and_personas(isolated):
+    """The Runs page filters on prompt variant, agent persona and reporter persona, which live in
+    runs.meta. A run recorded before a dimension existed has no key for it and ran with that
+    dimension's default, so it must count as the default - not vanish from every filtered view."""
+    from fastapi.testclient import TestClient
+
+    from codefix.graph import runner
+    from web.api.app import app
+
+    bb = runner.blackboard()
+    for tid, meta in (("legacy", {}),                                   # predates the dimensions
+                      ("fs", {"variant": "fewshot"}),
+                      ("sr", {"variant": "react", "persona": "senior"}),
+                      ("eu", {"reporter": "enduser"})):
+        bb.create_run(tid, bug_report="r", repo="/repo", arch="hierarchical", max_attempts=3,
+                      llm_mode="live", meta=meta)
+        bb.update_run(tid, status="done", outcome="passed")
+    c = TestClient(app)
+    ids = lambda **q: {r["task_id"] for r in c.get("/api/runs", params=q).json()}  # noqa: E731
+
+    assert ids(variant="fewshot") == {"fs"}
+    assert ids(variant="react") == {"legacy", "sr", "eu"}          # missing key -> react
+    assert ids(persona="senior") == {"sr"}
+    assert ids(persona="default") == {"legacy", "fs", "eu"}
+    assert ids(reporter="enduser") == {"eu"}
+    assert ids(variant="react", persona="senior") == {"sr"}        # filters combine
+    row = next(r for r in c.get("/api/runs").json() if r["task_id"] == "legacy")
+    assert (row["variant"], row["persona"], row["reporter"]) == ("react", "default", "developer")
+    assert c.get("/api/config").json()["reporters"] == ["developer", "enduser"]
