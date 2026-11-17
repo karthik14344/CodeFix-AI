@@ -55,11 +55,24 @@ def _read(p: Path) -> str:
         return f.read().replace("\r\n", "\n")
 
 
+def _normalize_eol(root: Path) -> None:
+    """Commit every text file with LF. A Windows checkout (core.autocrlf=true) gives the pristine
+    repos CRLF in the working tree; copying that verbatim left non-bug files CRLF while the bug file
+    was rewritten LF, so an LF patch touching a second file failed to apply in the grader."""
+    for p in root.rglob("*"):
+        if not p.is_file() or ".git" in p.parts:
+            continue
+        data = p.read_bytes()
+        if b"\r\n" in data and b"\0" not in data:
+            p.write_bytes(data.replace(b"\r\n", b"\n"))
+
+
 def materialize(bug: Bug, dest: Path) -> Path:
     """Copy the pristine repo to `dest`, inject the bug, commit it as the repo's HEAD."""
     rmtree(dest)
     shutil.copytree(REPOS_DIR / bug.repo, dest, ignore=shutil.ignore_patterns(
         "__pycache__", ".pytest_cache", "node_modules", ".codefix-junit.xml"))
+    _normalize_eol(dest)
     originals = {f: _read(dest / f) for f in bug.files}
     edits = [{"path": i["file"], "find": i["find"], "replace": i["replace"]} for i in bug.inject]
     from codefix.agents.patching import apply_edits_in_memory

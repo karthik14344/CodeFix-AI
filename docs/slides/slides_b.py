@@ -144,8 +144,9 @@ def slide10(prs, stats, cmp_v, cmp_r, study):
          "judge agrees with the tests (judge never sees them)")
     stat(s, Inches(6.55), Inches(1.3), Inches(2.9), f"{100*tot_rx/tot_n:.0f}%",
          "patches byte-identical to the reference fix")
-    stat(s, Inches(9.6), Inches(1.3), Inches(3.3), str(study["unresolved"]),
-         "unresolved — both caught only by the fresh-clone re-test", color=WARN)
+    stat(s, Inches(9.6), Inches(1.3), Inches(3.3), "0",
+         "patches the judge passed that the tests failed — it only ever erred cautious",
+         color=GOOD)
 
     tf = box(s, Inches(0.45), Inches(2.6), Inches(6.0), Inches(0.4))
     put(tf, "Response time — the system and each agent", size=15, bold=True, color=ACCENT,
@@ -176,17 +177,20 @@ def slide10(prs, stats, cmp_v, cmp_r, study):
             f"{100*tot_ag/max(tot_j,1):.0f}% agreement with tests"]],
           size=11, col_w=[4.6, 1.8, 3.6], row_h=0.44)
     callout(s, Inches(6.75), Inches(4.85), Inches(6.15), Inches(2.2),
-            [("Why all three — the case that proves it.  ", {"b": True, "c": WARN}),
-             ("In both unresolved runs (hard bug py11) the ", {}),
-             ("Tester", {"b": True}), (" passed the patch in its own workspace and the ", {}),
-             ("judge", {"b": True}), (" rated it a pass at 0.95–0.97. Only the ", {}),
+            [("Why all three — and why disagreements get investigated.  ",
+              {"b": True, "c": WARN}),
+             ("On hard bug py11 the ", {}), ("Tester", {"b": True}), (" and the ", {}),
+             ("judge", {"b": True}), (" passed the patch, but the ", {}),
              ("fresh-clone re-test", {"b": True}),
-             (" caught that the recorded patch did not apply. Two of three graders were wrong; "
-              "the model-free one was right.", {})], size=12.5)
-    notes(s, "Lead with the failures, they are the best evidence for the design. Tester said "
-             "green, judge said pass, fresh clone said the patch does not even apply. That is "
-             "why the fresh-clone re-test exists. Also: the judge model must differ from both "
-             "generating models, enforced when the config loads.")
+             (" first said it did not apply. Tracing that disagreement found a line-ending bug "
+              "in our own grader. Fixed, both patches pass all 46 tests. No grader is trusted "
+              "alone — not even the model-free one.", {})], size=12.5)
+    notes(s, "Tell the py11 story honestly: Tester green, judge pass, re-test said 'patch does "
+             "not apply'. We investigated instead of accepting it: the bug repos had mixed "
+             "CRLF/LF line endings on Windows and the grader, unlike the Tester's apply tool, had "
+             "no fallback. Fixed the harness, re-graded, both resolve. Every judge disagreement "
+             "was the judge being more cautious than the tests. Also: the judge model must "
+             "differ from both generating models, enforced when the config loads.")
 
 
 def slide11(prs):
@@ -261,17 +265,17 @@ def slide13(prs, stats, total_cost, study):
     bullets(tf, [
         [("The agent set is derived, not assumed.", {"b": True}),
          (" Each agent traces to a requirement, and each requirement to a gap or a claim.", {})],
-        [("Model-free verification earned its place.", {"b": True}),
-         (" In both failures the Tester and the judge passed a patch that the fresh-clone "
-          "re-test showed would not even apply.", {})],
+        [("Three graders, and the graders get checked too.", {"b": True}),
+         (" When the re-test contradicted the Tester and the judge, the fault was a "
+          "line-ending bug in our harness — found only because they disagreed.", {})],
         [("Architecture did not change whether bugs were fixed.", {"b": True}),
          (" All three resolved every completed run; they differ in cost, latency and "
           "variance.", {})],
         [("Localisation is where the time goes.", {"b": True}),
          (" The Diagnoser takes about half of every run.", {})],
-        [("Plain ReAct was the most reliable prompt.", {"b": True}),
-         (" It resolved every run; few-shot and Reflection each lost one, on the same hard "
-          "bug, at half and ~67% more the cost.", {})],
+        [("Prompt strategy changed the cost, not the outcome.", {"b": True}),
+         (" ReAct, few-shot and Reflection all resolved every run; few-shot at half the "
+          "cost, Reflection at ~67% more for no gain.", {})],
         [("A stack trace turned out to be unnecessary.", {"b": True}),
          (" The end-user persona, given symptoms only, still resolved every run.", {})],
     ], size=12.5, space=8)

@@ -706,10 +706,16 @@ def _results(doc, helpers, rows, stats, facts, archs, total_runs, total_cost):
                 "of thing and is kept separate.")
     para(doc,
          f"Across all {study['graded']} graded runs the system resolved {study['resolved']}. "
-         f"The {study['unresolved']} that were not resolved are the most instructive results in "
-         "the study, and Section 7.7 examines them: in both, the Tester agent reported the "
-         "suite green inside its own workspace, the LLM judge rated the patch a pass, and only "
-         "the independent fresh-clone re-test caught that the recorded patch did not apply.",
+         "This figure is after a correction to the grader itself. The first grading pass "
+         "scored two runs red — both on the hard bug py11-sku-dashes — with the note "
+         "“patch does not apply”, although the Tester had passed both and the LLM judge "
+         "had rated both a pass. Investigation showed the fault was in the evaluation harness, "
+         "not the agents: on the Windows host the bug repositories were committed with mixed "
+         "line endings (the injected file LF, every other file CRLF), and the grader, unlike "
+         "the Tester's own apply tool, had no fallback for line-ending drift. Both patches "
+         "edited a second, CRLF file, and were the only patches in the study that did. With the "
+         "harness corrected, both apply to a clean clone and pass all 46 tests; Section 7.7 "
+         "gives the detail.",
          align=J)
 
     doc.add_heading("7.3  Architecture comparison", level=2)
@@ -804,19 +810,23 @@ def _results(doc, helpers, rows, stats, facts, archs, total_runs, total_cost):
     para(doc,
          "Because the judge never sees the test results, its agreement with them is a "
          "measurement of the judge rather than of the system. At this level of agreement it is "
-         "a usable proxy when tests are unavailable — but its disagreements are not random. "
-         "In the two unresolved runs of Section 7.7 the judge rated an unreproducible patch a "
-         "pass with 0.95–0.97 confidence, which is precisely the case where a proxy would "
-         "have misled.", align=J)
+         "a usable proxy when tests are unavailable. Every disagreement in the study went the "
+         "same way: the judge returned “partial” on a patch the suite passed, never “pass” "
+         "on one it failed. In the js03-template-falsy case it was arguably the judge that was "
+         "right — the patch fixed the reported zero/false bug but changed how an explicit "
+         "null renders, a behaviour no test covers. A judge that errs towards caution is a "
+         "safe proxy; the study has no case of it waving through a broken patch.", align=J)
     para(doc,
          "About three-quarters of patches were byte-identical to the known-good fix modulo "
          "whitespace, with a mean edit similarity of "
          f"{sum(s['ref_sim']*s['n'] for s in stats.values())/total_runs:.2f} and the correct "
          "file set changed in virtually every run. The gap between ~75% exact and ~100% "
          "resolved is the interesting part: in the remaining quarter the agent produced a "
-         "different but still correct patch — for instance normalising a value at a "
-         "different but equivalent point. This is why reference matching alone would be the "
-         "wrong criterion, and why the executed test suite is the one used.", align=J)
+         "different patch that still passed the full suite — for instance normalising a "
+         "value at a different but equivalent point. Passing is not always the same as "
+         "equivalent (the js03 null case above is the exception), but it is never the same as "
+         "wrong. This is why reference matching alone would be the wrong criterion, and why "
+         "the executed test suite is the one used.", align=J)
 
     doc.add_heading("7.6  Cost and running time", level=2)
     secs = sum(num(r, "duration_ms") for r in rows) / 1000
@@ -870,31 +880,47 @@ def _results(doc, helpers, rows, stats, facts, archs, total_runs, total_cost):
             ["**Mean cost / run**"] + [f"${cv['levels'][k]['cost']:.4f}" for k in lv],
         ], widths=[2.1] + [1.4] * len(lv), size=9,
             caption=f"Table 7.4  Prompt variants, paired on {len(cv['bugs'])} bugs.")
+    lvl = cv["levels"]
+    base = next((k for k in lvl if k.startswith("react") and "reflect" not in k), None)
+    fs, rr = lvl.get("fewshot"), lvl.get("react-reflect")
+    if base and fs and rr:
+        para(doc,
+             "All three variants resolved every run, so the prompt strategy did not change "
+             "whether bugs were fixed; the variants differ in what they cost. Few-shot is the "
+             f"cheapest and fastest because it makes {fs['calls']:.1f} model calls instead of "
+             f"{lvl[base]['calls']:.1f} and runs no tool loop at all. ReAct+Reflection adds a "
+             "Reviewer that critiques the patch before it is tested: it costs "
+             f"{rr['cost']/lvl[base]['cost']:.1f}× as much, takes "
+             f"{rr['secs']/lvl[base]['secs']:.1f}× as long, and resolves no better.", align=J)
     para(doc,
-         "Plain ReAct resolved every run; each alternative lost one. The two variants differ "
-         "mainly in what they cost. Few-shot is the cheapest and fastest because it makes 1.8 "
-         "model calls instead of 4.5 and runs no tool loop at all. ReAct+Reflection adds a "
-         "Reviewer that critiques the patch before it is tested: it costs about two-thirds more "
-         "and takes half again as long, and resolves no better.", align=J)
-    para(doc,
-         "The two failures are worth examining because they are the same failure. Both are "
-         "py11-sku-dashes, one of the two hard bugs, and in both the sequence was identical: "
-         "the agent wrote a broad multi-file patch (normalising SKUs in the catalogue and in "
-         "every inventory method, rather than the reference fix's single change); the Tester "
-         "agent applied it in its own workspace and reported the suite green; the LLM judge, "
-         "reading the diff, rated it a pass at 0.95–0.97 confidence; and the independent "
-         "re-test then found that the recorded patch did not apply to a clean checkout at all. "
-         "Two of the system's three graders were wrong, and only the model-free one was right.",
+         "One bug is worth examining: py11-sku-dashes, one of the two hard bugs. Under both "
+         "Few-shot and ReAct+Reflection the agent wrote the same broad two-file patch — the "
+         "reference fix's single change to normalize_sku in the catalogue, plus SKU "
+         "normalisation in every Inventory method. The Tester passed it and the LLM judge rated "
+         "it a pass at 0.95–0.97. The first grading pass, however, recorded both runs as "
+         "unresolved: the fresh-clone re-test reported that the patch did not apply.",
          align=J)
     para(doc,
-         "Two cautions follow. First, these are one failure each in ten runs, on a single bug, "
-         "so they suggest rather than establish that the non-default variants are less "
-         "reliable on hard defects. Second, the file-match figure in Table 7.4 is lower for the "
-         "same reason, not because either variant edited the wrong file: a patch that does not "
-         "apply scores zero on every reference measure. What the episode does establish is the "
-         "case for re-grading in a fresh clone. A Tester passing a patch in its own workspace "
-         "is not the same as the patch being reproducible, and it was the re-test, not the "
-         "Tester or the judge, that told them apart.", align=J)
+         "That verdict was wrong, and the cause was the harness. On the Windows host, git "
+         "checks the pristine repositories out with CRLF line endings; building a bug "
+         "repository copied every file verbatim but rewrote the injected file with LF. "
+         "inventory.py was therefore committed as CRLF, and an LF patch touching it failed "
+         "git's strict context match. The Tester's apply tool already retries tolerant of "
+         "line-ending drift, which is why it succeeded; the grader did not. These were the only "
+         "two patches in the study that edited a file other than the injected one, which is why "
+         "no other run was affected. After normalising line endings when bug repositories are "
+         "built, and giving the grader the same fallback as the Tester, both patches apply to a "
+         "clean clone and pass all 46 tests, and both match the reference edit exactly in "
+         "catalog.py.", align=J)
+    para(doc,
+         "Two lessons follow. First, an independent grader is only independent if it is "
+         "itself verified: here the model-free re-test was the one in error, and the episode "
+         "was caught only because its verdict disagreed with both the Tester and the judge — "
+         "a reason to investigate every disagreement rather than to trust any single grader. "
+         "Second, the right-file figure in Table 7.4 is below 100% for these variants because "
+         "the py11 patch was broader than needed, not because it was wrong: it changed a second "
+         "file the reference fix leaves alone. Correct but not minimal is a fair criticism of "
+         "it; unresolved is not.", align=J)
 
     doc.add_heading("7.8  Personas: who prompts, and who reports", level=2)
     cp, cr = cmp_factor("persona", crows), cmp_factor("reporter", crows)
@@ -1032,11 +1058,12 @@ def _team_and_conclusions(doc, helpers, stats, total_runs, total_cost, facts):
         [("The agent set is derived, not assumed. ", {"b": True}),
          ("Each of the five agents traces to a requirement which traces in turn to a literature "
           "gap or a problem-statement claim (Tables 4.1 and 5.1).", {})],
-        [("Role specialisation makes verification independent — and it needed a second "
-          "layer. ", {"b": True}),
+        [("Role specialisation makes verification independent — and the graders need "
+          "checking too. ", {"b": True}),
          ("The Tester runs no model, so the criterion is an executed suite rather than an "
-          "agent's opinion. But in both unresolved runs the Tester itself passed a patch that "
-          "did not apply to a clean checkout; only the fresh-clone re-test caught it.", {})],
+          "agent's opinion. The one time the graders disagreed sharply, it was the fresh-clone "
+          "re-test that was wrong — a line-ending bug in the harness — and it was found "
+          "because its verdict contradicted both the Tester and the judge.", {})],
         [("Architecture choice did not affect whether bugs were fixed. ", {"b": True}),
          ("All three topologies resolved every completed run. They differed in cost, latency "
           "and variance, not in capability — and the hierarchical architecture's "
@@ -1046,9 +1073,10 @@ def _team_and_conclusions(doc, helpers, stats, total_runs, total_cost, facts):
          ("In the one live run whose first patch failed, the Manager identified the failure as "
           "the Fixer's own syntax error, re-dispatched only the Fixer with the failure log, and "
           "the second attempt passed — without re-running the Diagnoser.", {})],
-        [("Plain ReAct was the most reliable prompt. ", {"b": True}),
-         ("It resolved every run. Few-shot and ReAct+Reflection each lost one, on the same hard "
-          "bug, at roughly half and two-thirds-more the cost respectively.", {})],
+        [("Prompt strategy changed the cost, not the outcome. ", {"b": True}),
+         ("ReAct, Few-shot and ReAct+Reflection all resolved every run. Few-shot did it at "
+          "roughly half the cost; the Reflection reviewer added about two-thirds to the cost "
+          "and bought nothing measurable.", {})],
         [("A stack trace turned out to be unnecessary. ", {"b": True}),
          ("Given only a symptom description and no trace, the Diagnoser still localised and "
           "the system resolved every run — directly addressing gap LG1.", {})],
@@ -1057,10 +1085,9 @@ def _team_and_conclusions(doc, helpers, stats, total_runs, total_cost, facts):
           "finding the defect, not writing the fix, is the expensive part.", {})],
         [("A judge is a usable proxy but not a substitute. ", {"b": True}),
          (f"Judge–test agreement was {100*study['agree']/max(study['graded'],1):.0f}% "
-          "across the study, yet the judge rated both unreproducible patches a pass at "
-          "0.95–0.97, and roughly a quarter of correct patches differed from the reference "
-          "fix while still passing every test. Neither the judge nor reference matching could "
-          "replace execution.", {})],
+          "across the study, and every disagreement was the judge being more cautious than the "
+          "tests, never less. Roughly a quarter of passing patches differed from the reference "
+          "fix, so reference matching could not replace execution either.", {})],
         [("Cost is modest and measurable. ", {"b": True}),
          (f"${study['cost']:.2f} for all {study['recorded']} runs "
           f"(${study['cost']/study['recorded']:.4f} each), with cached input more than half of "
@@ -1079,10 +1106,11 @@ def _team_and_conclusions(doc, helpers, stats, total_runs, total_cost, facts):
         "agent persona — because each varies one factor against the architecture "
         "experiment's baseline. They identify effects worth investigating; they do not have the "
         "statistical weight of the 139-run architecture comparison.",
-        "Why the two unresolved patches did not apply to a clean checkout, when the Tester had "
-        "applied them successfully in its own workspace, is not yet diagnosed. Both were broad "
-        "multi-file patches on the same bug. Making the Tester grade the exact diff that will be "
-        "recorded, rather than its workspace state, would close the gap.",
+        "The evaluation harness itself had a platform bug (mixed line endings on Windows) "
+        "that briefly mis-graded two correct patches; it was found only because the graders "
+        "disagreed. The grader has no test of its own across platforms, and one should be "
+        "added — for instance, re-grading the bug set's known-good fixes on Linux and "
+        "Windows and requiring every one to apply.",
         "Run data on the deployed service is not persistent; a cold instance restores a seeded "
         "snapshot of the evaluation rather than accumulating history.",
     ])

@@ -78,7 +78,13 @@ def objective_check(repo: Path, sandbox: Path, diff: str, bug: Bug | None, name:
     try:
         pf = ws / ".git" / "judge.patch"
         pf.write_text(diff if diff.endswith("\n") else diff + "\n", encoding="utf-8", newline="\n")
-        if run(["git", "apply", "--recount", "--whitespace=nowarn", str(pf)], cwd=ws).returncode != 0:
+        # Same apply policy as the Tester's apply_patch tool: strict first, then tolerant of
+        # CRLF/whitespace drift in context lines. Without the fallback, a multi-file patch touching
+        # a CRLF file on a Windows checkout was graded "does not apply" although it was correct.
+        flags = ["--recount", "--whitespace=nowarn"]
+        if run(["git", "apply", "--check", *flags, str(pf)], cwd=ws).returncode != 0:
+            flags.append("--ignore-whitespace")
+        if run(["git", "apply", *flags, str(pf)], cwd=ws).returncode != 0:
             return {"objective_pass": False, "target_test_pass": False, "note": "patch does not apply", **empty_ref}
         ref = reference_compare(repo, ws, bug) if bug else empty_ref
         target = testrunner.run_tests(ws, selector=bug.failing_test) if bug else {"passed": None}

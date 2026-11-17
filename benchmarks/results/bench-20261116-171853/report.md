@@ -6,17 +6,17 @@
 
 | Metric | fewshot | react-reflect |
 |---|---|---|
-| Resolved (fresh-clone full suite green) | 7/8 (88%) | 7/8 (88%) |
-| Previously-failing test green | 7/8 | 7/8 |
+| Resolved (fresh-clone full suite green) | 8/8 (100%) | 8/8 (100%) |
+| Previously-failing test green | 8/8 | 8/8 |
 | Judge verdict = pass | 8/8 (100%) | 8/8 (100%) |
 | Judge verdict = partial | 0 | 0 |
-| **Judge accuracy** (agrees with tests) | 88% | 88% |
+| **Judge accuracy** (agrees with tests) | 100% | 100% |
 | Mean Fixer attempts | 1.00 | 1.12 |
 | Runs needing a retry | 0 | 1 |
 | Escalated to human | 0 | 0 |
 | Errors | 0 | 0 |
-| Reference fix: exact match | 4/8 (50%) | 4/8 (50%) |
-| Reference fix: edit similarity (0-1) | 0.81 | 0.77 |
+| Reference fix: exact match | 5/8 (62%) | 5/8 (62%) |
+| Reference fix: edit similarity (0-1) | 0.93 | 0.89 |
 | Reference fix: same file(s) changed | 7/8 | 7/8 |
 | Mean wall-clock / run | 60.8s | 110.8s |
 | Wall-clock std-dev | 27.6s | 72.6s |
@@ -46,7 +46,7 @@ _No failures._
 
 | Judge \ Tests | green | red |
 |---|---|---|
-| pass | 14 | 2 |
+| pass | 16 | 0 |
 
 ## Per-bug outcomes (✅ resolved · ❌ not resolved · attempts)
 
@@ -59,7 +59,7 @@ _No failures._
 | py05-region-case | medium | ✅1 | ✅1 |
 | py08-mutable-default | hard | ✅1 | ✅1 |
 | py09-snapshot-aliasing | medium | ✅1 | ✅2 |
-| py11-sku-dashes | hard | ❌1 | ❌1 |
+| py11-sku-dashes | hard | ✅1 | ✅1 |
 
 ## By difficulty (resolved / runs)
 
@@ -67,7 +67,7 @@ _No failures._
 |---|---|---|
 | easy | 2/2 | 2/2 |
 | medium | 4/4 | 4/4 |
-| hard | 1/2 | 1/2 |
+| hard | 2/2 | 2/2 |
 
 ## Cost and running time
 
