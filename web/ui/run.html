@@ -216,7 +216,11 @@ function renderOutcome(s) {
          <div style="display:flex; gap:10px"><button class="primary" id="prBtn">Open Pull Request…</button><button class="btn ghost" id="declineBtn">Decline</button></div>`;
   }
   if (s.pr && r.status === 'done') {
-    h = `<p>${s.pr.pushed ? '✔ <b>Branch pushed.</b>' : 'ℹ'} ${esc(s.pr.note || '')}</p>${s.pr.url ? `<p><a href="${esc(s.pr.url)}" target="_blank" rel="noopener">${esc(s.pr.url)}</a></p>` : ''}`;
+    const noRemote = !s.pr.pushed && /no 'origin' remote/.test(s.pr.note || '');
+    h = noRemote
+      ? `<p>✔ <b>Fix approved.</b> It is committed on <code>${esc(s.pr.branch)}</code> inside the sandbox.</p>
+         <p style="color:var(--muted)">No pull request was opened: this run used a ${r.bug_id ? 'seeded demo repository created inside the container, which' : 'repository that'} has no GitHub <code>origin</code> remote, so there was nowhere to push. That is the gate working as intended — it never pushes to a guessed destination.</p>`
+      : `<p>${s.pr.pushed ? '✔ <b>Branch pushed.</b>' : 'ℹ'} ${esc(s.pr.note || '')}</p>${s.pr.url ? `<p><a href="${esc(s.pr.url)}" target="_blank" rel="noopener">${esc(s.pr.url)}</a></p>` : ''}`;
   }
   if (s.escalation) {
     h = `<p><b>⚑ Escalated to a human</b> after ${s.escalation.attempts} attempt(s): ${esc(s.escalation.reason)}</p>
@@ -249,17 +253,23 @@ $('#modalBg').onclick = e => { if (e.target.id === 'modalBg') closeModal(); };
 
 function prModal(s) {
   const branch = s.pr?.branch || `codefix/${s.run.task_id}`;
-  modal(`<h3>Open a Pull Request?</h3>
-    <p>This will <b>push</b> branch <code>${esc(branch)}</code> to the target repo's <code>origin</code> remote and open a PR against its default branch. It never pushes to the default branch itself.</p>
+  // A seeded bug runs on a throwaway repo built inside the container with `git init`: it has no
+  // GitHub remote, so there is nowhere to push. Say so up front instead of promising a PR.
+  const seeded = !!s.run.bug_id;
+  modal(`<h3>${seeded ? 'Approve this fix?' : 'Open a Pull Request?'}</h3>
+    ${seeded
+      ? `<p>This is a <b>seeded demo repository</b>, created inside the container for this run. It has <b>no GitHub remote</b>, so nothing can be pushed and <b>no pull request will be opened</b>. Approving records your decision and keeps the verified fix committed on <code>${esc(branch)}</code> in the sandbox.</p>
+         <p style="color:var(--muted); font-size:13px">To open a real PR, run CodeFix against your own repository that has a GitHub <code>origin</code> and a <code>GITHUB_TOKEN</code>.</p>`
+      : `<p>This will <b>push</b> branch <code>${esc(branch)}</code> to the target repo's <code>origin</code> remote and open a PR against its default branch. It never pushes to the default branch itself.</p>`}
     <label style="text-transform:none; font-size:13px; display:flex; gap:8px; align-items:center"><input type="checkbox" id="ack" style="width:auto"> I reviewed the diff and the test results</label>
-    <div class="actions"><button class="btn ghost" id="cancel">Cancel</button><button class="primary" id="confirm" disabled>Push &amp; open PR</button></div>
+    <div class="actions"><button class="btn ghost" id="cancel">Cancel</button><button class="primary" id="confirm" disabled>${seeded ? 'Approve fix' : 'Push &amp; open PR'}</button></div>
     <p id="prErr" class="status-error"></p>`);
   $('#ack').onchange = () => $('#confirm').disabled = !$('#ack').checked;
   $('#cancel').onclick = closeModal;
   $('#confirm').onclick = async () => {
-    $('#confirm').disabled = true; $('#confirm').textContent = 'Pushing…';
+    $('#confirm').disabled = true; $('#confirm').textContent = seeded ? 'Recording…' : 'Pushing…';
     try { await api(`/api/runs/${TASK}/pr`, { method: 'POST', body: JSON.stringify({ confirm: true }) }); closeModal(); refresh(); }
-    catch (e) { $('#prErr').textContent = e.message; $('#confirm').textContent = 'Push & open PR'; }
+    catch (e) { $('#prErr').textContent = e.message; $('#confirm').textContent = seeded ? 'Approve fix' : 'Push & open PR'; }
   };
 }
 document.addEventListener('click', async e => {
