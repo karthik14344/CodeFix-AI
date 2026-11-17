@@ -55,6 +55,7 @@ def _excluded(patterns: list[str], path: str) -> bool:
     "benchmarks/seed/traces/x.jsonl",
     "config/models.yaml",
     "codefix/llm.py",
+    "docs/graph.png",                                         # served by /api/graph
 ])
 def test_files_the_image_needs_are_not_excluded(ignore_file, needed):
     assert not _excluded(_patterns(ignore_file), needed), (
@@ -70,6 +71,9 @@ def test_files_the_image_needs_are_not_excluded(ignore_file, needed):
     "traces/20261115.jsonl",
     "tests/test_llm.py",          # our own suite stays out of the image
     "codefix/__pycache__/llm.cpython-311.pyc",
+    "docs/report/CodeFix_AI_Final_Report.pdf",                # deliverables, not runtime
+    "docs/slides/CodeFix_AI_Final_Presentation.pptx",
+    "docs/slides/~$CodeFix_AI_Final_Presentation.pptx",       # Office lock file: gcloud crashed on it
 ])
 def test_local_state_and_secrets_are_still_excluded(ignore_file, secret):
     assert _excluded(_patterns(ignore_file), secret), (

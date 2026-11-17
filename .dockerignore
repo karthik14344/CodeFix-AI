@@ -22,3 +22,11 @@
 **/__pycache__/
 *.pyc
 *.egg-info/
+
+# Generated deliverables: the report and the deck are built from the repo, never read by the
+# running service (only docs/graph.png is served), and they are ~30 MB. Excluding them also keeps
+# Office lock files out of the upload - gcloud crashed trying to read ~$...pptx while the deck
+# was open in PowerPoint.
+/docs/report/
+/docs/slides/
+~$*
