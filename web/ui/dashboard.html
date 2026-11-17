@@ -33,7 +33,8 @@
 
   <div class="grid g2" style="margin-top:16px">
     <div class="card"><h2>Fixer attempts per run</h2><div class="legend" id="attLegend"></div><div class="chart" id="attempts"></div></div>
-    <div class="card"><h2>Cost per run</h2><div class="legend" id="costLegend"></div><div class="chart" id="cost"></div></div>
+    <div class="card"><h2>Cost per run</h2><div class="legend" id="costLegend"></div><div class="chart" id="cost"></div>
+      <details style="margin-top:8px"><summary class="muted">Table view</summary><div id="costTable"></div></details></div>
   </div>
 
   <div class="grid g2" style="margin-top:16px">
@@ -152,21 +153,82 @@ const isResolved = r => (r.objective_pass === null || r.objective_pass === undef
   showGantt();
 }
 
+// Cost per run as a STRIP PLOT: one row per architecture, one dot per run on a shared cost axis,
+// with the median marked. This replaced one bar per run in time order, which (a) needed ~4px per
+// run, so 187 runs drew ~750px into a 514px plot and spilled past the card, and (b) could not
+// answer the chart's actual question - how do the architectures compare? - because the runs were
+// interleaved by date and the 48 hierarchical sweep runs made hierarchical look dominant purely
+// by count. Here every run is still visible (outliers included), each row says how many runs it
+// holds, and the median is read off directly.
+const quantile = (xs, q) => { if (!xs.length) return 0; const s = [...xs].sort((a, b) => a - b);
+  const i = (s.length - 1) * q, lo = Math.floor(i); return s[lo] + (s[Math.min(lo + 1, s.length - 1)] - s[lo]) * (i - lo); };
+function niceStep(range, target = 4) {
+  const raw = range / target, mag = 10 ** Math.floor(Math.log10(raw));
+  return [1, 2, 2.5, 5, 10].map(m => m * mag).find(st => st >= raw) || 10 * mag;
+}
+// stable pseudo-random in [0,1) from a string, so a run's dot does not jump on every refresh
+const jitter = key => { let h = 2166136261; for (const c of key) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); }
+  return ((h >>> 0) % 1000) / 1000; };
+
 function costColumns(el, runs) {
-  if (!runs.length) { el.innerHTML = '<div class="empty">No data yet</div>'; return; }
-  const W = 560, H = 200, left = 46, bottom = 18, top = 8;
-  const max = Math.max(...runs.map(r => r.cost_usd), 1e-6);
-  const bw = Math.max(2, (W - left) / runs.length - 2);
-  const y = v => top + (H - top - bottom) * (1 - v / max);
-  let s = `<svg viewBox="0 0 ${W} ${H}">`;
-  [0, 0.5, 1].forEach(f => s += `<line class="gridline" x1="${left}" x2="${W}" y1="${y(f * max)}" y2="${y(f * max)}"/><text x="${left - 6}" y="${y(f * max) + 4}" text-anchor="end">${fmtUsd(f * max)}</text>`);
-  runs.forEach((r, i) => {
-    const x = left + i * (bw + 2), by = y(r.cost_usd), h = H - bottom - by;
-    s += `<rect class="bar" x="${x}" y="${by}" width="${bw}" height="${Math.max(h, 1)}" rx="${Math.min(4, bw / 2)}" fill="${ARCH_COLOR[r.arch]}"
-      data-tip="<b>${esc(r.task_id)}</b>${esc(r.arch)} · ${esc(r.bug_id || '')}<br>${fmtUsd(r.cost_usd)} · ${esc(r.outcome || '')}"/>`;
+  const rows = ['hierarchical', 'sequential', 'p2p'].filter(a => runs.some(r => r.arch === a));
+  if (!rows.length) { el.innerHTML = '<div class="empty">No data yet</div>'; $('#costTable').innerHTML = ''; return; }
+  const W = 560, labelW = 104, right = 92, top = 6, rowH = 46, axisH = 26, noteH = 18;
+  const x0 = labelW, x1 = W - right;                       // plot spans x0..x1, inside the viewBox
+  // Cap the axis just above the bulk when a few far outliers would otherwise squash every other
+  // run into a sliver (two $0.11-0.16 runs stretched the axis to $0.20 while ~95% sat below
+  // $0.05). Runs above the cap are pinned at the edge, marked, and listed in a note.
+  const all = runs.map(r => r.cost_usd || 0), max = Math.max(...all, 1e-6), p95 = quantile(all, 0.95);
+  const capped = max > 2 * p95 && p95 > 0;
+  const domMax = capped ? p95 * 1.25 : max;
+  const step = niceStep(domMax), top_ = Math.ceil(domMax / step) * step;
+  const off = v => v > top_ + 1e-12;
+  const x = v => x0 + (x1 - x0) * Math.min(v, top_) / top_;
+  const fmtTick = v => `$${v.toFixed(step < 0.01 ? 3 : 2)}`;
+  const pinned = runs.filter(r => off(r.cost_usd || 0));
+  const H = top + rows.length * rowH + axisH + (pinned.length ? noteH : 0);
+  const axisY = top + rows.length * rowH;
+
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Cost per run by architecture">`;
+  for (let v = 0; v <= top_ + 1e-12; v += step) {         // recessive vertical gridlines + ticks
+    const gx = x(v), last = v + step > top_ + 1e-12;
+    s += `<line class="gridline" x1="${gx}" x2="${gx}" y1="${top}" y2="${axisY}"/>` +
+         `<text x="${gx}" y="${axisY + 17}" text-anchor="middle" fill="var(--text-muted)" font-size="11">${fmtTick(v)}${last && pinned.length ? '+' : ''}</text>`;
+  }
+  if (pinned.length) {
+    s += `<text x="${x0}" y="${H - 3}" fill="var(--text-muted)" font-size="11">${pinned.length} run${pinned.length === 1 ? '' : 's'} above ${fmtTick(top_)} pinned at the right edge (${
+      pinned.map(r => fmtUsd(r.cost_usd)).join(', ')}) · hover for detail</text>`;
+  }
+  const stats = rows.map((a, i) => {
+    const rs = runs.filter(r => r.arch === a), costs = rs.map(r => r.cost_usd || 0);
+    const cy = top + i * rowH + rowH / 2, band = rowH * 0.62;
+    // row label: identity is carried by the name as well as the color
+    s += `<text x="0" y="${cy - 3}" fill="var(--text-primary)" font-size="12.5" font-weight="600">${esc(a)}</text>` +
+         `<text x="0" y="${cy + 13}" fill="var(--text-muted)" font-size="11">${rs.length} run${rs.length === 1 ? '' : 's'}</text>`;
+    rs.forEach(r => {
+      const isOff = off(r.cost_usd || 0);
+      const cx = x(r.cost_usd || 0), dy = (jitter(r.task_id) - 0.5) * band;
+      const tip = `<b>${esc(r.task_id)}</b>${esc(a)} · ${esc(r.bug_id || '')}<br>${fmtUsd(r.cost_usd)}${
+        isOff ? ' (off scale)' : ''} · ${esc(r.outcome || '')}`;
+      // 8px marker with a 2px surface ring so overlapping dots stay separable; a pinned outlier
+      // gets a chevron so it never reads as a value sitting exactly at the axis limit.
+      // A larger invisible circle on top is the hover target.
+      s += `<circle cx="${cx}" cy="${cy + dy}" r="4" fill="${ARCH_COLOR[a]}" stroke="var(--surface-1)" stroke-width="2"/>` +
+           (isOff ? `<path d="M${cx + 7} ${cy + dy - 4} l4 4 l-4 4" fill="none" stroke="var(--text-secondary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>` : '') +
+           `<circle cx="${cx}" cy="${cy + dy}" r="8" fill="transparent" data-tip="${tip}"/>`;
+    });
+    const med = quantile(costs, 0.5), mx = x(med);
+    s += `<line x1="${mx}" x2="${mx}" y1="${cy - band / 2 - 3}" y2="${cy + band / 2 + 3}" stroke="var(--text-primary)" stroke-width="2" stroke-linecap="round"/>` +
+         `<text x="${x1 + 24}" y="${cy - 2}" fill="var(--text-secondary)" font-size="11">median</text>` +
+         `<text x="${x1 + 24}" y="${cy + 12}" fill="var(--text-primary)" font-size="12" font-weight="600">${fmtUsd(med)}</text>`;
+    return { a, n: rs.length, med, mean: costs.reduce((p, c) => p + c, 0) / (costs.length || 1),
+             min: Math.min(...costs), max: Math.max(...costs), total: costs.reduce((p, c) => p + c, 0) };
   });
-  el.innerHTML = s + `<line class="axis" x1="${left}" x2="${W}" y1="${H - bottom}" y2="${H - bottom}"/></svg>`;
+  el.innerHTML = s + `<line class="axis" x1="${x0}" x2="${x1}" y1="${axisY}" y2="${axisY}"/></svg>`;
   bindTips(el);
+  $('#costTable').innerHTML = `<table><thead><tr><th>Arch</th><th class="num">Runs</th><th class="num">Median</th><th class="num">Mean</th><th class="num">Min</th><th class="num">Max</th><th class="num">Total</th></tr></thead><tbody>${
+    stats.map(t => `<tr><td>${esc(t.a)}</td><td class="num">${t.n}</td><td class="num">${fmtUsd(t.med)}</td><td class="num">${fmtUsd(t.mean)}</td><td class="num">${fmtUsd(t.min)}</td><td class="num">${fmtUsd(t.max)}</td><td class="num">${fmtUsd(t.total)}</td></tr>`).join('')
+  }</tbody></table>`;
 }
 
 async function showGantt() {
