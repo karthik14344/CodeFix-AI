@@ -35,7 +35,13 @@ const params = new URLSearchParams(location.search);
 const FILTERS = ['outcome', 'arch', 'llm', 'bench', 'variant', 'persona', 'reporter'];
 for (const k of FILTERS) if (params.get(k)) $('#' + k).dataset.init = params.get(k);
 
+// Only the most recent request may paint the table. Two filter changes in quick succession
+// send two requests, and over a real network the older one can arrive last and overwrite the
+// newer result: on the deployed site 'persona=senior' showed all 187 runs because the response
+// to the change before it landed afterwards.
+let loadSeq = 0;
 async function load() {
+  const seq = ++loadSeq;
   const q = new URLSearchParams();
   if ($('#outcome').value) q.set('outcome', $('#outcome').value);
   if ($('#arch').value) q.set('arch', $('#arch').value);
@@ -47,6 +53,7 @@ async function load() {
   for (const k of FILTERS) if ($('#' + k).value) shown.set(k, $('#' + k).value);
   history.replaceState(null, '', shown.toString() ? `?${shown}` : location.pathname);
   const rows = await api('/api/runs?' + q);
+  if (seq !== loadSeq) return;           // a newer filter change is already in flight
   $('#count').textContent = `${rows.length} runs`;
   $('#rows').innerHTML = rows.map(r => `
     <tr class="click" onclick="location.href='/run.html?id=${encodeURIComponent(r.task_id)}'">

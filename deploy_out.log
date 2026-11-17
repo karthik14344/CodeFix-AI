@@ -2,11 +2,17 @@ bindings:
 - members:
   - serviceAccount:324501187617-compute@developer.gserviceaccount.com
   role: roles/secretmanager.secretAccessor
-etag: BwZgdMb86ms=
+etag: BwZgdMyLE0c=
 version: 1
 bindings:
 - members:
   - serviceAccount:324501187617-compute@developer.gserviceaccount.com
   role: roles/secretmanager.secretAccessor
-etag: BwZgdMcz_7Y=
+etag: BwZgdMzAkwM=
 version: 1
+
+Deployed: https://codefix-ai-q4ojwfdrga-el.a.run.app
+  web app        https://codefix-ai-q4ojwfdrga-el.a.run.app/
+  A2A agent card https://codefix-ai-q4ojwfdrga-el.a.run.app/a2a/crew/.well-known/agent-card.json  (public by design)
+  A2A message/send requires the bearer token in Secret Manager: codefix-a2a-token
+  Read it with:  gcloud secrets versions access latest --secret codefix-a2a-token
