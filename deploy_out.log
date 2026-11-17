@@ -2,13 +2,13 @@ bindings:
 - members:
   - serviceAccount:324501187617-compute@developer.gserviceaccount.com
   role: roles/secretmanager.secretAccessor
-etag: BwZgclONrHc=
+etag: BwZgczF5bRw=
 version: 1
 bindings:
 - members:
   - serviceAccount:324501187617-compute@developer.gserviceaccount.com
   role: roles/secretmanager.secretAccessor
-etag: BwZgclPGI7c=
+etag: BwZgczG0wl0=
 version: 1
 
 Deployed: https://codefix-ai-q4ojwfdrga-el.a.run.app
