@@ -20,3 +20,7 @@ deploy_err.log
 
 # Office lock files
 ~$*
+
+# local tooling and logs - never part of the project
+.claude/
+*.log
