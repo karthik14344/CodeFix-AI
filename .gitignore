@@ -1,22 +1,22 @@
 .venv/
 __pycache__/
 *.pyc
-.env
-.codefix/
-runs.db*
-checkpoints.db*
-traces/
 .pytest_cache/
 .ruff_cache/
 *.egg-info/
 .codefix-junit.xml
 
-# generated report artifacts (rebuild with docs/report/build_report.py)
-bench_*.log
+# Secrets - at any level, deliberately unanchored
+.env
 
-bench_prompts.err
-.claudedeploy_out.log
-deploy_err.log
+# Local run state. Anchored to the repo root with a leading slash: gitignore patterns without
+# one match at EVERY level, and a bare `runs.db*` / `traces/` silently ignored
+# benchmarks/seed/runs.db and benchmarks/seed/traces/ - the 187-run study the deployed
+# dashboard and the report are built from - so it was never committed.
+/.codefix/
+/runs.db*
+/checkpoints.db*
+/traces/
 
 # Office lock files
 ~$*
@@ -24,3 +24,4 @@ deploy_err.log
 # local tooling and logs - never part of the project
 .claude/
 *.log
+*.err

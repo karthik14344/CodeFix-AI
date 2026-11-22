@@ -87,3 +87,27 @@ def test_the_sample_repos_really_do_use_different_test_directory_names():
     repos = ROOT / "benchmarks" / "bugset" / "repos"
     assert (repos / "pyshop" / "tests").is_dir()
     assert (repos / "textkit" / "test").is_dir()
+
+
+def _git_ignored(path: str) -> bool:
+    import subprocess
+
+    return subprocess.run(["git", "check-ignore", "-q", path], cwd=ROOT).returncode == 0
+
+
+@pytest.mark.parametrize("needed", [
+    "benchmarks/seed/runs.db",                   # the 187-run study behind the dashboard/report
+    "benchmarks/seed/traces/x.jsonl",
+    "benchmarks/bugset/repos/pyshop/tests/test_pricing.py",
+    "tests/test_llm.py",                         # unlike the image, the repo DOES keep our tests
+])
+def test_gitignore_keeps_what_the_repo_needs(needed):
+    """Asks git itself. Regression: a bare `runs.db*` / `traces/` silently ignored the seed, so
+    the study was never committed even though the deployed dashboard was built from it."""
+    assert not _git_ignored(needed), f".gitignore excludes {needed}"
+
+
+@pytest.mark.parametrize("secret", [".env", "sub/.env", "runs.db", "traces/t.jsonl",
+                                    ".codefix/sandbox/x", "deploy_out.log", ".claude/launch.json"])
+def test_gitignore_still_excludes_secrets_and_local_state(secret):
+    assert _git_ignored(secret), f".gitignore no longer excludes {secret}"
