@@ -25,3 +25,6 @@ __pycache__/
 .claude/
 *.log
 *.err
+
+# Deliverable archives (submission ZIPs) - not source
+/*.zip
